@@ -1,0 +1,32 @@
+{
+  "name": "apoj-party",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.22.2"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "test": "vitest run src",
+    "test:watch": "vitest src",
+    "test:e2e": "playwright test",
+    "check": "tsc -b"
+  },
+  "dependencies": {
+    "@solid-primitives/i18n": "^2.2.1",
+    "solid-js": "^1.9.15"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^26.5.0",
+    "jsdom": "^30.0.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2",
+    "vite-plugin-pwa": "^1.3.0",
+    "vite-plugin-solid": "^2.11.14",
+    "vitest": "^5.0.0"
+  }
+}

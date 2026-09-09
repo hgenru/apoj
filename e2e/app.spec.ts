@@ -1,0 +1,54 @@
+import { expect, test } from "@playwright/test";
+
+test("opens the bilingual home and demo editor", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByTestId("home-screen")).toBeVisible();
+  await page.getByRole("button", { name: "RU" }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("Новый раунд");
+
+  await page.getByRole("button", { name: "EN" }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("New round");
+
+  await page.getByRole("button", { name: "Demo without a microphone" }).click();
+  await expect(page.getByTestId("edit-screen")).toBeVisible();
+  await expect(page.locator(".boundary-handle")).toHaveCount(3);
+  await expect(page.getByText(/4 chunks/)).toBeVisible();
+});
+
+test("settings are available without entering a round", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "RU" }).click();
+  await page.getByRole("button", { name: /Настройки/ }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(page.getByLabel("Канал микшера")).toHaveValue("mix");
+  await expect(page.getByRole("button", { name: "Проверить микрофон" })).toBeVisible();
+});
+
+test("records PCM through the browser audio worklet", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "RU" }).click();
+  await page.getByRole("button", { name: /Начать раунд/ }).click();
+  await page.getByRole("button", { name: "Проверить микрофон" }).click();
+  await expect(page.getByText(/Микрофон готов/)).toBeVisible();
+  await page.getByRole("button", { name: /Перейти к записи/ }).click();
+  await expect(page.getByText(/не должен слышать оригинал/)).toBeVisible();
+  await page.getByRole("button", { name: "Начать запись" }).click();
+  await page.waitForTimeout(900);
+  await page.getByRole("button", { name: "Закончить петь" }).click();
+  await expect(page.getByTestId("edit-screen")).toBeVisible();
+});
+
+test("separates repeats and offers another listen", async ({ page }) => {
+  test.setTimeout(30_000);
+  await page.goto("/");
+  await page.getByRole("button", { name: "RU" }).click();
+  await page.getByRole("button", { name: "Демо без микрофона" }).click();
+  await page.getByRole("button", { name: /Разрезы хорошие/ }).click();
+  await page.getByRole("button", { name: /Я готов/ }).click();
+
+  await expect(page.getByRole("heading", { name: /Слушай · 1\/2/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /тот же кусок/ })).toBeVisible({ timeout: 8_000 });
+  await expect(page.getByRole("heading", { name: /Слушай · 2\/2/ })).toBeVisible({ timeout: 8_000 });
+  await page.getByRole("button", { name: /Послушать ещё раз/ }).click();
+  await expect(page.getByRole("heading", { name: /Слушай ещё раз/ })).toBeVisible();
+});
