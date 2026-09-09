@@ -116,7 +116,10 @@ export function findSmartBoundaries(clip: AudioClip, options: SplitOptions): num
   if (totalSamples === 0) return [0];
 
   const duration = totalSamples / clip.sampleRate;
-  const target = clamp(options.targetSeconds, 1, 8);
+  // Longer performances can carry slightly longer phrases without turning a
+  // short take into only one or two oversized chunks.
+  const durationScale = 1 + clamp((duration - 10) / 200, 0, 0.16);
+  const target = clamp(options.targetSeconds * durationScale, 1, 8);
   const minSeconds = options.minSeconds ?? Math.max(0.8, target * 0.52);
   const maxSeconds = options.maxSeconds ?? target * 1.45;
   const minimumCount = Math.max(1, Math.ceil(duration / maxSeconds));

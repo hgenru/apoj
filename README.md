@@ -25,11 +25,11 @@ No server, account, or internet connection is required after the app has been lo
 6. After a short preparation countdown and a beep, player two imitates the sound. In Auto mode, recording starts on their voice and stops on silence.
 7. APOZH joins the imitations with a tiny breathing gap, reverses the complete recording, and plays the result. In Auto mode, the result starts automatically after a short reveal pause.
 
-During the challenge, **Listen again** replays the current chunk. **Discard and try again** throws away the current take, while **Record again** replaces a take that has just finished.
+During the challenge, **Listen again** replays the current chunk. **Discard and try again** throws away the current take, while **Record again** replaces a take that has just finished. **Pause** safely stops playback or recording; continuing restarts that fragment from the beginning.
 
 Choose **Auto** or **Manual** directly on the home screen. Auto runs a hands-free round driven by voice detection. Manual is safer in a noisy room: playback repeats still run automatically, while large on-screen controls start and stop recording and advance to the next fragment.
 
-The primary action is always available on `Space` and common Play/Pause media keys. During the challenge, `R` or Previous Track repeats or replaces the current take. The relevant shortcut is shown on every button that has one.
+`Space` performs the large primary action and `R` repeats or replaces the current take. During the challenge, `P` or Play/Pause pauses and resumes the round. `Backspace` or Previous Track returns to the previous safe step, while Next Track performs the primary action. On the reveal screen, `O` plays the original and `N` starts a fresh round immediately. The relevant shortcut is shown on every button that has one.
 
 ## Install the PWA and play offline
 

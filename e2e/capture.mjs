@@ -30,8 +30,15 @@ await page.screenshot({ path: "test-results/editor-review.png", fullPage: true }
 await page.getByRole("button", { name: /Разрезы хорошие/ }).click();
 await page.screenshot({ path: "test-results/handoff-review.png", fullPage: true });
 await page.getByRole("button", { name: /^Начать/ }).click();
+await page.waitForTimeout(1_650);
+await page.screenshot({ path: "test-results/challenge-playing-review.png", fullPage: true });
 await page.getByRole("button", { name: /Начать запись/ }).waitFor();
 await page.screenshot({ path: "test-results/manual-ready-review.png", fullPage: true });
+await page.keyboard.press("p");
+await page.getByRole("heading", { name: /Раунд на паузе/ }).waitFor();
+await page.screenshot({ path: "test-results/challenge-paused-review.png", fullPage: true });
+await page.keyboard.press("Space");
+await page.getByRole("button", { name: /Начать запись/ }).waitFor();
 await page.getByRole("button", { name: /Начать запись/ }).click();
 await page.waitForTimeout(150);
 await page.screenshot({ path: "test-results/manual-recording-review.png", fullPage: true });

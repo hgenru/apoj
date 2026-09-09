@@ -11,7 +11,7 @@
 7. The recorded answers are separated by a short breathing gap, concatenated in challenge order, and the whole result is reversed.
 8. The group compares the reconstructed song with the original.
 
-Auto and Manual are selected on the home screen. Auto mode only needs the initial “ready” button; voice detection runs the challenge after that and plays the reconstructed result after a short reveal. Manual mode keeps automatic playback repeats but requires explicit start, stop, and next-fragment actions for rooms where reliable detection is impossible. Space and common media keys trigger the primary action on each stage; R or Previous Track handles replay and retake actions.
+Auto and Manual are selected on the home screen. Auto mode only needs the initial “ready” button; voice detection runs the challenge after that and plays the reconstructed result after a short reveal. Manual mode keeps automatic playback repeats but requires explicit start, stop, and next-fragment actions for rooms where reliable detection is impossible. Space triggers the primary action, R handles replay and retakes, P or Play/Pause safely pauses the challenge, and Backspace or Previous Track returns to the previous safe step.
 
 ## Stack
 
@@ -29,7 +29,7 @@ There is no backend. Recordings stay in memory and disappear on refresh.
 The splitter works on the normal source recording, not on reversed audio:
 
 1. Calculate a smoothed RMS envelope with a 24 ms window and 12 ms hop.
-2. Pick a chunk count close to `duration / targetDuration`, constrained by minimum and maximum chunk lengths.
+2. Gently increase the effective target duration for takes longer than 10 seconds, up to 16%, then pick a constrained chunk count close to `duration / targetDuration`.
 3. Around every ideal boundary, collect nearby local energy minima.
 4. Use dynamic programming to choose all boundaries together. Its cost combines boundary energy and deviation from an even chunk duration.
 5. If no feasible quiet-valley path exists, fall back to evenly spaced boundaries.
@@ -38,7 +38,7 @@ This makes normal phrasing win when pauses exist, while remaining predictable fo
 
 Current defaults:
 
-- target: 2.1 seconds;
+- base target: 2.3 seconds, rising gradually to at most 2.67 seconds for long takes;
 - minimum: 52% of target, never below 0.8 seconds;
 - maximum: 145% of target;
 - draggable boundary minimum spacing: 0.55 seconds;

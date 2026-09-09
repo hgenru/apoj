@@ -39,7 +39,7 @@ test("settings are available without entering a round", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Микрофон" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Фрагменты" })).toBeVisible();
   await expect(page.getByRole("group", { name: "Канал микшера" }).getByRole("button", { name: "L + R в моно" })).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByLabel(/Средняя длина кусочка/)).toHaveValue("2.1");
+  await expect(page.getByLabel(/Средняя длина кусочка/)).toHaveValue("2.3");
   await expect(page.getByRole("button", { name: "Проверить микрофон" })).toBeVisible();
   await expect(page.getByText("Управление раундом")).toHaveCount(0);
 });
@@ -102,6 +102,9 @@ test("manual mode waits for explicit recording and next-fragment controls", asyn
   await expect(page.getByRole("heading", { name: /Записано/ })).toBeVisible();
   await page.getByRole("button", { name: /Следующий кусочек/ }).click();
   await expect(page.getByRole("heading", { name: /Слушай · 1\/1/ })).toBeVisible();
+  await page.getByRole("button", { name: /шаг назад/i }).click();
+  await expect(page.getByText("1 / 2", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Приготовься слушать/ })).toBeVisible();
 });
 
 test("space controls primary actions and the last fragment has no next countdown", async ({ page }) => {
@@ -125,6 +128,39 @@ test("space controls primary actions and the last fragment has no next countdown
   await page.keyboard.press("Space");
   await expect(page.getByTestId("reveal-screen")).toBeVisible();
   await expect(page.locator(".reveal-confetti i")).toHaveCount(16);
+
+  await page.keyboard.press("n");
+  await expect(page.getByTestId("source-screen")).toBeVisible();
+  await expect(page.locator(".live-waveform__bar")).toHaveCount(0);
+  await expect(page.getByText("0:00", { exact: true })).toBeVisible();
+});
+
+test("pause freezes the challenge and back returns to the previous safe step", async ({ page }) => {
+  test.setTimeout(35_000);
+  await openSourceScreen(page, "Вручную");
+  await recordSource(page);
+
+  await page.getByRole("button", { name: /назад/i }).click();
+  await expect(page.getByTestId("source-screen")).toBeVisible();
+  await expect(page.locator(".live-waveform__bar")).toHaveCount(0);
+  await expect(page.getByText("0:00", { exact: true })).toBeVisible();
+
+  await recordSource(page);
+  await page.getByRole("button", { name: /Разрезы хорошие/ }).click();
+  await page.getByRole("button", { name: /^Начать/ }).click();
+  await expect(page.getByRole("heading", { name: /Готов петь/ })).toBeVisible({ timeout: 12_000 });
+  await page.getByRole("button", { name: /Начать запись/ }).click();
+  await expect(page.getByRole("heading", { name: /идёт запись/ })).toBeVisible();
+
+  await page.keyboard.press("p");
+  await expect(page.getByRole("heading", { name: "Раунд на паузе" })).toBeVisible();
+  await page.waitForTimeout(1_000);
+  await expect(page.getByRole("heading", { name: "Раунд на паузе" })).toBeVisible();
+
+  await page.keyboard.press("Space");
+  await expect(page.getByRole("heading", { name: /Приготовься слушать/ })).toBeVisible();
+  await page.getByRole("button", { name: /назад/i }).click();
+  await expect(page.getByTestId("handoff-screen")).toBeVisible();
 });
 
 test("has a valid installable web app manifest", async ({ page, context }) => {

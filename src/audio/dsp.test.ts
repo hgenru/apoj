@@ -49,6 +49,16 @@ describe("smart audio preparation", () => {
     }
   });
 
+  it("gently lengthens chunks for a longer performance", () => {
+    const shortClip = makeClip(10);
+    const longClip = makeClip(30);
+    fillTone(shortClip, 0, 10);
+    fillTone(longClip, 0, 30);
+
+    expect(findSmartBoundaries(shortClip, { targetSeconds: 2.3 })).toHaveLength(5);
+    expect(findSmartBoundaries(longClip, { targetSeconds: 2.3 })).toHaveLength(13);
+  });
+
   it("sets the voice gate above steady room noise but ignores a single bump", () => {
     const gate = makeAdaptiveVoiceGate(-42, [0.009, 0.01, 0.01, 0.011, 0.4]);
     expect(gate.startThreshold).toBeCloseTo(0.024, 3);

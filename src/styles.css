@@ -134,6 +134,7 @@ input:focus-visible {
 }
 
 .topbar__actions,
+.topbar__round-actions,
 .hero__actions,
 .stage-actions,
 .reveal__actions,
@@ -142,6 +143,10 @@ input:focus-visible {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.topbar__round-actions {
+  justify-content: flex-end;
 }
 
 .stage-actions,
@@ -964,8 +969,7 @@ kbd {
   gap: 60px;
 }
 
-.party-stage__kicker,
-.challenge-screen__phase {
+.party-stage__kicker {
   margin: 0 0 13px;
   color: var(--mint);
   font-size: clamp(1rem, 1.25vw, 1.3rem);
@@ -1125,6 +1129,7 @@ kbd {
   font-size: clamp(1.6rem, 2.3vw, 2.25rem);
 }
 
+.topbar__round-control,
 .topbar__round-exit {
   min-height: 58px;
   font-size: 1.05rem;
@@ -1212,15 +1217,13 @@ kbd {
 }
 
 .challenge-orb__content {
+  position: relative;
+  z-index: 1;
   display: grid;
   width: 100%;
   height: 100%;
   place-items: center;
   line-height: 1;
-}
-
-.challenge-orb--playing .challenge-orb__content {
-  transform: translateX(0.06em);
 }
 
 .challenge-orb--saved .challenge-orb__content {
@@ -1234,14 +1237,12 @@ kbd {
 
 .challenge-screen__command {
   display: grid;
-  grid-template-rows: 34px minmax(92px, auto) 44px;
+  grid-template-rows: minmax(108px, auto) 44px;
   align-items: center;
+  align-content: center;
   justify-items: center;
+  row-gap: 8px;
   text-align: center;
-}
-
-.challenge-screen__phase {
-  margin: 0;
 }
 
 .challenge-screen__command h1 {
@@ -1508,7 +1509,10 @@ kbd {
 }
 
 .challenge-orb {
+  position: relative;
   display: grid;
+  isolation: isolate;
+  overflow: hidden;
   width: clamp(165px, 20vw, 220px);
   aspect-ratio: 1;
   margin-bottom: 27px;
@@ -1516,14 +1520,42 @@ kbd {
   border: 2px solid rgb(255 255 255 / 12%);
   border-radius: 50%;
   background: rgb(255 255 255 / 4%);
+  box-shadow: 0 24px 65px rgb(0 0 0 / 24%);
   font-size: 5rem;
   font-weight: 900;
   transition: color 180ms ease, background 180ms ease, transform 180ms ease;
 }
 
+.challenge-orb::before {
+  position: absolute;
+  z-index: 0;
+  width: 54%;
+  height: 54%;
+  border-radius: 50%;
+  border: 2px solid rgb(255 255 255 / 14%);
+  box-shadow: 0 0 0 25px rgb(255 255 255 / 4%), 0 0 0 53px rgb(255 255 255 / 3%);
+  content: "";
+}
+
+.challenge-orb__pause-bars {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+}
+
+.challenge-orb__pause-bars i {
+  width: 22px;
+  height: 90px;
+  border-radius: 7px;
+  background: currentColor;
+}
+
 .challenge-orb--playing {
-  color: var(--yellow);
-  animation: soft-bob 900ms ease-in-out infinite alternate;
+  color: var(--night);
+  background: var(--yellow);
+  font-family: var(--display);
+  animation: record-spin 2.8s linear infinite;
 }
 
 .challenge-orb--starting {
@@ -1562,6 +1594,11 @@ kbd {
   background: rgb(255 209 102 / 7%);
 }
 
+.challenge-orb--paused {
+  color: var(--night);
+  background: var(--coral);
+}
+
 .challenge__timing {
   min-height: 1.5em;
   margin: 18px 0 0;
@@ -1579,7 +1616,7 @@ kbd {
     "visual actions"
     "visual autoplay"
     "visual new";
-  grid-template-rows: auto auto 28px 54px;
+  grid-template-rows: auto auto 28px 78px;
   align-content: center;
   align-items: center;
   gap: 20px 80px;
@@ -1692,8 +1729,8 @@ kbd {
 .reveal__new-round {
   grid-area: new;
   justify-self: start;
-  padding-inline: 0;
-  font-size: 1rem;
+  min-width: 310px;
+  font-size: 1.2rem;
 }
 
 .reveal-confetti {
@@ -1967,6 +2004,10 @@ input[type="range"] {
   to { transform: scale(1.02); }
 }
 
+@keyframes record-spin {
+  to { transform: rotate(360deg); }
+}
+
 @keyframes fade-in {
   from { opacity: 0; }
 }
@@ -1991,6 +2032,21 @@ input[type="range"] {
     min-height: 74px;
   }
 
+  .topbar__round-actions {
+    gap: 6px;
+  }
+
+  .topbar__round-control,
+  .topbar__round-exit {
+    min-height: 44px;
+    padding-inline: 12px;
+    font-size: 0.8rem;
+  }
+
+  .topbar__round-actions kbd {
+    display: none;
+  }
+
   .hero,
   .lobby {
     display: block;
@@ -2013,7 +2069,7 @@ input[type="range"] {
       "actions"
       "autoplay"
       "new";
-    grid-template-rows: 310px auto auto 28px 54px;
+    grid-template-rows: 310px auto auto 28px 78px;
     gap: 24px;
     height: auto;
     min-height: calc(100vh - 75px);

@@ -32,7 +32,7 @@ interface BeforeInstallPromptEvent extends Event {
 const DEFAULT_SETTINGS: GameSettings = {
   channelMode: "mix",
   controlMode: "auto",
-  targetChunkSeconds: 2.1,
+  targetChunkSeconds: 2.3,
   repeats: 2,
   voiceThresholdDb: -42,
   silenceMs: 950,
@@ -53,7 +53,9 @@ function readSettings(): GameSettings {
     const migrated = { ...DEFAULT_SETTINGS, ...(saved ?? {}) };
     // Move installations that still have the original defaults to the calmer,
     // shorter-chunk party defaults without overwriting deliberate choices.
-    if (saved?.targetChunkSeconds === 2.6) migrated.targetChunkSeconds = DEFAULT_SETTINGS.targetChunkSeconds;
+    if (saved?.targetChunkSeconds === 2.1 || saved?.targetChunkSeconds === 2.6) {
+      migrated.targetChunkSeconds = DEFAULT_SETTINGS.targetChunkSeconds;
+    }
     if (saved?.silenceMs === 700) migrated.silenceMs = DEFAULT_SETTINGS.silenceMs;
     migrated.targetChunkSeconds = Math.min(3.4, Math.max(1.4, migrated.targetChunkSeconds));
     return migrated;
@@ -96,6 +98,8 @@ export default function App() {
   const [challengeCountdown, setChallengeCountdown] = createSignal<number>();
   const [extraListen, setExtraListen] = createSignal(false);
   const [redoRequested, setRedoRequested] = createSignal(false);
+  const [challengePaused, setChallengePaused] = createSignal(false);
+  const [pausedChallengeIndex, setPausedChallengeIndex] = createSignal(0);
   const [revealAutoplayPending, setRevealAutoplayPending] = createSignal(false);
   const [installPrompt, setInstallPrompt] = createSignal<BeforeInstallPromptEvent>();
   const [installed, setInstalled] = createSignal(
@@ -105,6 +109,7 @@ export default function App() {
   let sourceTimer: number | undefined;
   let revealAutoplayTimer: number | undefined;
   let challengeRun = 0;
+  let challengeTask: Promise<void> | undefined;
   let stopCurrentAttempt: (() => void) | undefined;
   let startCurrentAttempt: (() => void) | undefined;
   let requestReplay: (() => void) | undefined;
@@ -118,6 +123,12 @@ export default function App() {
     return clip ? buildChallenge(clip, boundaries()) : [];
   });
   const hasNextChallengeClip = createMemo(() => challengeIndex() + 1 < challengeClips().length);
+  const pausedChallengeHint = createMemo(() => {
+    if (pausedChallengeIndex() <= challengeIndex()) return t("challenge.pausedHint");
+    return pausedChallengeIndex() < challengeClips().length
+      ? t("challenge.pausedNextHint")
+      : t("challenge.pausedRevealHint");
+  });
   const revealClip = createMemo(() => (attempts().length ? assembleReveal(attempts()) : undefined));
 
   createEffect(() => {
@@ -210,8 +221,27 @@ export default function App() {
     }
   };
 
+  const resetRoundData = () => {
+    window.clearInterval(sourceTimer);
+    sourceTimer = undefined;
+    setSourceRecording(false);
+    setRecordSeconds(0);
+    setLiveWaveform([]);
+    setSourceClip(undefined);
+    setBoundaries([]);
+    setAttempts([]);
+    setChallengeIndex(0);
+    setChallengeRepeat(1);
+    setChallengeCountdown(undefined);
+    setExtraListen(false);
+    setRedoRequested(false);
+    setChallengePaused(false);
+    setPausedChallengeIndex(0);
+  };
+
   const beginRound = () => {
     setError("");
+    resetRoundData();
     if (!micReady()) {
       setSetupPurpose("round");
       setSetupOpen(true);
@@ -228,6 +258,8 @@ export default function App() {
   const startSourceRecording = () => {
     setError("");
     try {
+      window.clearInterval(sourceTimer);
+      sourceTimer = undefined;
       setLiveWaveform([]);
       engine.startRecording();
       setSourceRecording(true);
@@ -241,6 +273,7 @@ export default function App() {
 
   const stopSourceRecording = async () => {
     window.clearInterval(sourceTimer);
+    sourceTimer = undefined;
     setSourceRecording(false);
     try {
       const rawClip = await engine.stopRecording();
@@ -427,14 +460,16 @@ export default function App() {
     };
   });
 
-  const runChallenge = async () => {
+  const runChallenge = async (startIndex = 0, resetAttempts = true) => {
     const token = ++challengeRun;
-    setAttempts([]);
-    setChallengeIndex(0);
+    if (resetAttempts) setAttempts([]);
+    else setAttempts((current) => current.slice(0, startIndex));
+    setChallengePaused(false);
+    setChallengeIndex(startIndex);
     setStage("challenge");
     setChallengeStatus("starting");
     await waitWithCountdown(PARTY_TIMING.firstListenLeadInMs, token);
-    let index = 0;
+    let index = startIndex;
 
     try {
       while (index < challengeClips().length && token === challengeRun) {
@@ -443,10 +478,11 @@ export default function App() {
         setRedoRequested(false);
         setExtraListen(false);
 
-        for (let repeat = 0; repeat < settings().repeats; repeat += 1) {
+        for (let repeat = 0; repeat < settings().repeats && token === challengeRun; repeat += 1) {
           setChallengeRepeat(repeat + 1);
           setChallengeStatus("playing");
           await engine.play(clip);
+          if (token !== challengeRun) return;
           if (repeat + 1 < settings().repeats) {
             setChallengeStatus("between");
             await waitWithCountdown(PARTY_TIMING.betweenRepeatsMs, token);
@@ -474,6 +510,7 @@ export default function App() {
         }
         if (token !== challengeRun) return;
         await engine.beep(820, 110);
+        if (token !== challengeRun) return;
         const captured = settings().controlMode === "auto"
           ? await captureAutomaticAttempt(token, clip, ambientLevels)
           : await captureManualAttempt(token);
@@ -510,10 +547,8 @@ export default function App() {
     }
   };
 
-  const cancelRound = async () => {
+  const interruptChallenge = () => {
     challengeRun += 1;
-    window.clearTimeout(revealAutoplayTimer);
-    revealAutoplayTimer = undefined;
     stopCurrentAttempt?.();
     startCurrentAttempt = undefined;
     requestReplay?.();
@@ -522,8 +557,53 @@ export default function App() {
     requestSavedNext?.();
     requestMissedRetry?.();
     engine.stopPlayback();
+    setChallengeCountdown(undefined);
+  };
+
+  const launchChallenge = (startIndex = 0, resetAttempts = true) => {
+    const task = runChallenge(startIndex, resetAttempts);
+    challengeTask = task;
+    void task.finally(() => {
+      if (challengeTask === task) challengeTask = undefined;
+    });
+  };
+
+  const pauseChallenge = () => {
+    if (stage() !== "challenge" || challengePaused()) return;
+    const resumeIndex = challengeStatus() === "saved" ? challengeIndex() + 1 : challengeIndex();
+    setPausedChallengeIndex(resumeIndex);
+    setAttempts((current) => current.slice(0, resumeIndex));
+    setChallengePaused(true);
+    interruptChallenge();
+  };
+
+  const resumeChallenge = async () => {
+    if (stage() !== "challenge" || !challengePaused()) return;
+    const interruptedTask = challengeTask;
+    if (interruptedTask) await interruptedTask;
+    if (stage() !== "challenge" || !challengePaused()) return;
+    const resumeIndex = pausedChallengeIndex();
+    setChallengePaused(false);
+    if (resumeIndex >= challengeClips().length) {
+      setStage("reveal");
+      return;
+    }
+    launchChallenge(resumeIndex, false);
+  };
+
+  const toggleChallengePause = () => {
+    if (challengePaused()) void resumeChallenge();
+    else pauseChallenge();
+  };
+
+  const cancelRound = async () => {
+    const interruptedTask = challengeTask;
+    interruptChallenge();
+    window.clearTimeout(revealAutoplayTimer);
+    revealAutoplayTimer = undefined;
     if (sourceRecording()) {
       window.clearInterval(sourceTimer);
+      sourceTimer = undefined;
       setSourceRecording(false);
       try {
         await engine.stopRecording();
@@ -531,10 +611,9 @@ export default function App() {
         // Returning home is still safe if the recorder already stopped.
       }
     }
+    if (interruptedTask) await interruptedTask;
     setStage("home");
-    setSourceClip(undefined);
-    setBoundaries([]);
-    setAttempts([]);
+    resetRoundData();
     setError("");
   };
 
@@ -556,6 +635,61 @@ export default function App() {
     if (clip) void engine.play(clip);
   };
 
+  const startNextRound = async () => {
+    await cancelRound();
+    beginRound();
+  };
+
+  const goBackOneStep = async () => {
+    if (setupOpen()) {
+      setSetupOpen(false);
+      return;
+    }
+
+    switch (stage()) {
+      case "home":
+        return;
+      case "source":
+        await cancelRound();
+        return;
+      case "edit":
+        engine.stopPlayback();
+        setSourceClip(undefined);
+        setBoundaries([]);
+        setLiveWaveform([]);
+        setRecordSeconds(0);
+        setStage("source");
+        return;
+      case "handoff":
+        engine.stopPlayback();
+        setStage("edit");
+        return;
+      case "challenge": {
+        const cursor = challengePaused() ? pausedChallengeIndex() : challengeIndex();
+        const interruptedTask = challengeTask;
+        setChallengePaused(false);
+        interruptChallenge();
+        if (interruptedTask) await interruptedTask;
+        if (cursor <= 0) {
+          setAttempts([]);
+          setStage("handoff");
+          return;
+        }
+        const previousIndex = cursor - 1;
+        setAttempts((current) => current.slice(0, previousIndex));
+        launchChallenge(previousIndex, false);
+        return;
+      }
+      case "reveal": {
+        cancelRevealAutoplay();
+        engine.stopPlayback();
+        const previousIndex = Math.max(0, challengeClips().length - 1);
+        setAttempts((current) => current.slice(0, previousIndex));
+        launchChallenge(previousIndex, false);
+      }
+    }
+  };
+
   const runPrimaryShortcut = () => {
     if (setupOpen()) return;
     switch (stage()) {
@@ -570,10 +704,11 @@ export default function App() {
         if (sourceClip()) setStage("handoff");
         break;
       case "handoff":
-        void runChallenge();
+        launchChallenge();
         break;
       case "challenge":
-        if (challengeStatus() === "ready") requestReadyProceed?.();
+        if (challengePaused()) void resumeChallenge();
+        else if (challengeStatus() === "ready") requestReadyProceed?.();
         else if (challengeStatus() === "waiting") startCurrentAttempt?.();
         else if (challengeStatus() === "recording") stopCurrentAttempt?.();
         else if (challengeStatus() === "saved" && settings().controlMode === "manual") requestSavedNext?.();
@@ -587,12 +722,17 @@ export default function App() {
   };
 
   const runRepeatShortcut = () => {
-    if (setupOpen() || stage() !== "challenge") return;
+    if (setupOpen() || stage() !== "challenge" || challengePaused()) return;
     if (challengeStatus() === "ready") requestReplay?.();
     else if (challengeStatus() === "recording") {
       setRedoRequested(true);
       stopCurrentAttempt?.();
     } else if (challengeStatus() === "saved") requestSavedRedo?.();
+  };
+
+  const runMediaPlayPause = () => {
+    if (stage() === "challenge") toggleChallengePause();
+    else runPrimaryShortcut();
   };
 
   onMount(() => {
@@ -602,7 +742,19 @@ export default function App() {
       const isInteractive = target?.matches("button, input, select, textarea, a, [contenteditable='true']");
       if (isInteractive) return;
 
-      if (event.code === "Space" || event.key === "MediaPlayPause") {
+      if (event.code === "Space") {
+        event.preventDefault();
+        runPrimaryShortcut();
+      } else if (event.key === "MediaPlayPause") {
+        event.preventDefault();
+        runMediaPlayPause();
+      } else if (event.code === "KeyP" && stage() === "challenge") {
+        event.preventDefault();
+        toggleChallengePause();
+      } else if (event.code === "Backspace" || event.key === "MediaTrackPrevious") {
+        event.preventDefault();
+        void goBackOneStep();
+      } else if (event.key === "MediaTrackNext") {
         event.preventDefault();
         runPrimaryShortcut();
       } else if (event.code === "KeyR") {
@@ -615,7 +767,7 @@ export default function App() {
       } else if (stage() === "reveal" && event.code === "KeyO") {
         playRevealOriginal();
       } else if (stage() === "reveal" && event.code === "KeyN") {
-        void cancelRound();
+        void startNextRound();
       }
     };
 
@@ -628,15 +780,17 @@ export default function App() {
         // Browsers expose different subsets of media-key actions.
       }
     };
-    setMediaHandler("play", runPrimaryShortcut);
-    setMediaHandler("pause", runPrimaryShortcut);
-    setMediaHandler("previoustrack", runRepeatShortcut);
+    setMediaHandler("play", runMediaPlayPause);
+    setMediaHandler("pause", runMediaPlayPause);
+    setMediaHandler("previoustrack", () => void goBackOneStep());
+    setMediaHandler("nexttrack", runPrimaryShortcut);
 
     onCleanup(() => {
       window.removeEventListener("keydown", handleShortcut);
       setMediaHandler("play", null);
       setMediaHandler("pause", null);
       setMediaHandler("previoustrack", null);
+      setMediaHandler("nexttrack", null);
     });
   });
 
@@ -650,7 +804,7 @@ export default function App() {
           <span class="brand__mark">↶</span>
           <span>{t("app.name")}</span>
         </button>
-        <Show when={stage() === "home" || stage() === "edit"}>
+        <Show when={stage() === "home"}>
           <div class="topbar__actions">
             <div class="language-switcher" role="group" aria-label={t("app.language")}>
               <button classList={{ active: locale() === "ru" }} onClick={() => setLocale("ru")}>RU</button>
@@ -668,10 +822,20 @@ export default function App() {
             </button>
           </div>
         </Show>
-        <Show when={stage() === "challenge"}>
-          <button class="button button--ghost topbar__round-exit" type="button" onClick={() => void cancelRound()}>
-            {t("challenge.cancel")}
-          </button>
+        <Show when={stage() !== "home"}>
+          <div class="topbar__round-actions">
+            <button class="button button--ghost topbar__round-control" type="button" aria-keyshortcuts="Backspace MediaTrackPrevious" onClick={() => void goBackOneStep()}>
+              {t("nav.back")}<kbd>{t("shortcut.back")}</kbd>
+            </button>
+            <Show when={stage() === "challenge"}>
+              <button class="button button--secondary topbar__round-control" type="button" aria-keyshortcuts="P MediaPlayPause" onClick={toggleChallengePause}>
+                {challengePaused() ? t("challenge.resume") : t("challenge.pause")}<kbd>{t("shortcut.pause")}</kbd>
+              </button>
+              <button class="button button--ghost topbar__round-exit" type="button" onClick={() => void cancelRound()}>
+                {t("challenge.cancel")}
+              </button>
+            </Show>
+          </div>
         </Show>
       </header>
 
@@ -796,7 +960,7 @@ export default function App() {
               <div class="handoff__icon" aria-hidden="true">🎤<span>2</span></div>
               <h1>{t("handoff.inviteBack")}</h1>
               <p class="stage__hint">{t("handoff.description")}</p>
-              <button class="button button--primary party-button" aria-keyshortcuts="Space" onClick={() => void runChallenge()}>
+              <button class="button button--primary party-button" aria-keyshortcuts="Space" onClick={() => launchChallenge()}>
                 {t("handoff.start")}<kbd>{t("shortcut.primary")}</kbd>
               </button>
             </section>
@@ -823,114 +987,139 @@ export default function App() {
 
               <div class="challenge-screen__visual">
                 <Show
-                  when={challengeStatus() === "waiting" || challengeStatus() === "recording"}
+                  when={challengePaused()}
                   fallback={
-                    <div classList={{ "challenge-orb": true, [`challenge-orb--${challengeStatus()}`]: true }}>
-                      <span class="challenge-orb__content">
-                        <Show when={challengeStatus() === "starting"}>{challengeCountdown() ?? 1}</Show>
-                        <Show when={challengeStatus() === "playing"}>▶</Show>
-                        <Show when={challengeStatus() === "between"}>{challengeCountdown() ?? 1}</Show>
-                        <Show when={challengeStatus() === "ready"}>
-                          {settings().controlMode === "auto" ? challengeCountdown() ?? 1 : "●"}
-                        </Show>
-                        <Show when={challengeStatus() === "saved"}>
-                          {settings().controlMode === "auto" && hasNextChallengeClip() ? challengeCountdown() ?? 1 : "✓"}
-                        </Show>
-                        <Show when={challengeStatus() === "missed"}>?</Show>
-                      </span>
-                    </div>
+                    <Show
+                      when={challengeStatus() === "waiting" || challengeStatus() === "recording"}
+                      fallback={
+                        <div classList={{ "challenge-orb": true, [`challenge-orb--${challengeStatus()}`]: true }}>
+                          <span class="challenge-orb__content">
+                            <Show when={challengeStatus() === "starting"}>{challengeCountdown() ?? 1}</Show>
+                            <Show when={challengeStatus() === "playing"}>Ж</Show>
+                            <Show when={challengeStatus() === "between"}>{challengeCountdown() ?? 1}</Show>
+                            <Show when={challengeStatus() === "ready"}>
+                              {settings().controlMode === "auto" ? challengeCountdown() ?? 1 : "●"}
+                            </Show>
+                            <Show when={challengeStatus() === "saved"}>
+                              {settings().controlMode === "auto" && hasNextChallengeClip() ? challengeCountdown() ?? 1 : "✓"}
+                            </Show>
+                            <Show when={challengeStatus() === "missed"}>?</Show>
+                          </span>
+                        </div>
+                      }
+                    >
+                      <div class="challenge-live-wave">
+                        <LiveWaveform
+                          values={liveWaveform()}
+                          active={challengeStatus() === "recording"}
+                          tone={challengeStatus() === "recording" ? "coral" : "mint"}
+                        />
+                      </div>
+                    </Show>
                   }
                 >
-                  <div class="challenge-live-wave">
-                    <LiveWaveform values={liveWaveform()} active={challengeStatus() === "recording"} tone="mint" />
+                  <div class="challenge-orb challenge-orb--paused">
+                    <span class="challenge-orb__content challenge-orb__pause-bars" aria-hidden="true"><i /><i /></span>
                   </div>
                 </Show>
               </div>
 
               <div class="challenge-screen__command" aria-live="polite">
-                <p class="challenge-screen__phase">
-                  <Switch>
-                    <Match when={["starting", "playing", "between"].includes(challengeStatus())}>{t("challenge.phaseListen")}</Match>
-                    <Match when={challengeStatus() === "ready"}>{t("challenge.phaseReady")}</Match>
-                    <Match when={challengeStatus() === "waiting" || challengeStatus() === "recording"}>{t("challenge.phaseSing")}</Match>
-                    <Match when={challengeStatus() === "saved"}>{t("challenge.phaseSaved")}</Match>
-                    <Match when={challengeStatus() === "missed"}>{t("challenge.phaseRetry")}</Match>
-                  </Switch>
-                </p>
-                <h1>
-                  <Switch>
-                    <Match when={challengeStatus() === "starting"}>{t("challenge.getReadyListen")}</Match>
-                    <Match when={challengeStatus() === "playing"}>
-                      {extraListen()
-                        ? t("challenge.listenExtra")
-                        : t("challenge.listenRepeat", { current: challengeRepeat(), total: settings().repeats })}
-                    </Match>
-                    <Match when={challengeStatus() === "between"}>{t("challenge.betweenRepeats")}</Match>
-                    <Match when={challengeStatus() === "ready"}>
-                      {settings().controlMode === "auto" ? t("challenge.repeatSoon") : t("challenge.manualReady")}
-                    </Match>
-                    <Match when={challengeStatus() === "waiting"}>{t("challenge.waitVoice")}</Match>
-                    <Match when={challengeStatus() === "recording"}>{t("challenge.recording")}</Match>
-                    <Match when={challengeStatus() === "saved"}>{t("challenge.saved")}</Match>
-                    <Match when={challengeStatus() === "missed"}>{t("challenge.missed")}</Match>
-                  </Switch>
-                </h1>
-                <div class="challenge-screen__support">
-                  <Show when={challengeStatus() === "ready" && settings().controlMode === "auto"}>{t("challenge.autoStarts")}</Show>
-                  <Show when={challengeStatus() === "waiting"}>{t("challenge.autoListening")}</Show>
-                  <Show when={challengeStatus() === "saved" && settings().controlMode === "auto"}>
-                    {hasNextChallengeClip() ? t("challenge.nextSoon") : t("challenge.revealSoon")}
-                  </Show>
-                  <Show when={challengeStatus() === "saved" && settings().controlMode === "manual"}>
-                    {hasNextChallengeClip() ? t("challenge.manualSaved") : t("challenge.manualReveal")}
-                  </Show>
-                </div>
+                <Show
+                  when={challengePaused()}
+                  fallback={
+                    <>
+                      <h1>
+                        <Switch>
+                          <Match when={challengeStatus() === "starting"}>{t("challenge.getReadyListen")}</Match>
+                          <Match when={challengeStatus() === "playing"}>
+                            {extraListen()
+                              ? t("challenge.listenExtra")
+                              : t("challenge.listenRepeat", { current: challengeRepeat(), total: settings().repeats })}
+                          </Match>
+                          <Match when={challengeStatus() === "between"}>{t("challenge.betweenRepeats")}</Match>
+                          <Match when={challengeStatus() === "ready"}>
+                            {settings().controlMode === "auto" ? t("challenge.repeatSoon") : t("challenge.manualReady")}
+                          </Match>
+                          <Match when={challengeStatus() === "waiting"}>{t("challenge.waitVoice")}</Match>
+                          <Match when={challengeStatus() === "recording"}>{t("challenge.recording")}</Match>
+                          <Match when={challengeStatus() === "saved"}>{t("challenge.saved")}</Match>
+                          <Match when={challengeStatus() === "missed"}>{t("challenge.missed")}</Match>
+                        </Switch>
+                      </h1>
+                      <div class="challenge-screen__support">
+                        <Show when={challengeStatus() === "ready" && settings().controlMode === "auto"}>{t("challenge.autoStarts")}</Show>
+                        <Show when={challengeStatus() === "waiting"}>{t("challenge.autoListening")}</Show>
+                        <Show when={challengeStatus() === "saved" && settings().controlMode === "auto"}>
+                          {hasNextChallengeClip() ? t("challenge.nextSoon") : t("challenge.revealSoon")}
+                        </Show>
+                        <Show when={challengeStatus() === "saved" && settings().controlMode === "manual"}>
+                          {hasNextChallengeClip() ? t("challenge.manualSaved") : t("challenge.manualReveal")}
+                        </Show>
+                      </div>
+                    </>
+                  }
+                >
+                  <h1>{t("challenge.paused")}</h1>
+                  <div class="challenge-screen__support">{pausedChallengeHint()}</div>
+                </Show>
               </div>
 
               <div class="challenge-screen__controls">
-                <Show when={challengeStatus() === "ready"}>
-                  <button class="button button--secondary party-button" aria-keyshortcuts="R" onClick={() => requestReplay?.()}>
-                    ↶ {t("challenge.listenAgain")}<kbd>{t("shortcut.repeat")}</kbd>
-                  </button>
-                  <Show when={settings().controlMode === "manual"}>
-                    <button class="button button--primary party-button" aria-keyshortcuts="Space" onClick={() => requestReadyProceed?.()}>
-                      ● {t("challenge.startRecording")}<kbd>{t("shortcut.primary")}</kbd>
-                    </button>
-                  </Show>
-                </Show>
-                <Show when={challengeStatus() === "waiting"}>
-                  <button class="button button--secondary party-button" aria-keyshortcuts="Space" onClick={() => startCurrentAttempt?.()}>
-                    {t("challenge.startManual")}<kbd>{t("shortcut.primary")}</kbd>
-                  </button>
-                </Show>
-                <Show when={challengeStatus() === "recording"}>
-                  <button class="button button--secondary party-button" aria-keyshortcuts="Space" onClick={() => stopCurrentAttempt?.()}>
-                    ■ {t("challenge.stop")}<kbd>{t("shortcut.primary")}</kbd>
-                  </button>
-                  <button
-                    class="button button--ghost party-button"
-                    aria-keyshortcuts="R"
-                    onClick={() => {
-                      setRedoRequested(true);
-                      stopCurrentAttempt?.();
-                    }}
-                  >
-                    ↶ {t("challenge.discard")}<kbd>{t("shortcut.repeat")}</kbd>
-                  </button>
-                </Show>
-                <Show when={challengeStatus() === "saved"}>
-                  <button class="button button--secondary party-button" aria-keyshortcuts="R" onClick={() => requestSavedRedo?.()}>
-                    ↶ {t("challenge.redo")}<kbd>{t("shortcut.repeat")}</kbd>
-                  </button>
-                  <Show when={settings().controlMode === "manual"}>
-                    <button class="button button--primary party-button" aria-keyshortcuts="Space" onClick={() => requestSavedNext?.()}>
-                      {hasNextChallengeClip() ? t("challenge.next") : t("challenge.showResult")}<kbd>{t("shortcut.primary")}</kbd>
-                    </button>
-                  </Show>
-                </Show>
-                <Show when={challengeStatus() === "missed"}>
-                  <button class="button button--primary party-button" aria-keyshortcuts="Space" onClick={() => requestMissedRetry?.()}>
-                    ↻ {t("challenge.tryAgain")}<kbd>{t("shortcut.primary")}</kbd>
+                <Show
+                  when={challengePaused()}
+                  fallback={
+                    <>
+                      <Show when={challengeStatus() === "ready"}>
+                        <button class="button button--secondary party-button" aria-keyshortcuts="R" onClick={() => requestReplay?.()}>
+                          ↶ {t("challenge.listenAgain")}<kbd>{t("shortcut.repeat")}</kbd>
+                        </button>
+                        <Show when={settings().controlMode === "manual"}>
+                          <button class="button button--primary party-button" aria-keyshortcuts="Space" onClick={() => requestReadyProceed?.()}>
+                            ● {t("challenge.startRecording")}<kbd>{t("shortcut.primary")}</kbd>
+                          </button>
+                        </Show>
+                      </Show>
+                      <Show when={challengeStatus() === "waiting"}>
+                        <button class="button button--secondary party-button" aria-keyshortcuts="Space" onClick={() => startCurrentAttempt?.()}>
+                          {t("challenge.startManual")}<kbd>{t("shortcut.primary")}</kbd>
+                        </button>
+                      </Show>
+                      <Show when={challengeStatus() === "recording"}>
+                        <button class="button button--secondary party-button" aria-keyshortcuts="Space" onClick={() => stopCurrentAttempt?.()}>
+                          ■ {t("challenge.stop")}<kbd>{t("shortcut.primary")}</kbd>
+                        </button>
+                        <button
+                          class="button button--ghost party-button"
+                          aria-keyshortcuts="R"
+                          onClick={() => {
+                            setRedoRequested(true);
+                            stopCurrentAttempt?.();
+                          }}
+                        >
+                          ↶ {t("challenge.discard")}<kbd>{t("shortcut.repeat")}</kbd>
+                        </button>
+                      </Show>
+                      <Show when={challengeStatus() === "saved"}>
+                        <button class="button button--secondary party-button" aria-keyshortcuts="R" onClick={() => requestSavedRedo?.()}>
+                          ↶ {t("challenge.redo")}<kbd>{t("shortcut.repeat")}</kbd>
+                        </button>
+                        <Show when={settings().controlMode === "manual"}>
+                          <button class="button button--primary party-button" aria-keyshortcuts="Space" onClick={() => requestSavedNext?.()}>
+                            {hasNextChallengeClip() ? t("challenge.next") : t("challenge.showResult")}<kbd>{t("shortcut.primary")}</kbd>
+                          </button>
+                        </Show>
+                      </Show>
+                      <Show when={challengeStatus() === "missed"}>
+                        <button class="button button--primary party-button" aria-keyshortcuts="Space" onClick={() => requestMissedRetry?.()}>
+                          ↻ {t("challenge.tryAgain")}<kbd>{t("shortcut.primary")}</kbd>
+                        </button>
+                      </Show>
+                    </>
+                  }
+                >
+                  <button class="button button--primary party-button" aria-keyshortcuts="Space" onClick={() => void resumeChallenge()}>
+                    {t("challenge.resume")}<kbd>{t("shortcut.primary")}</kbd>
                   </button>
                 </Show>
               </div>
@@ -963,8 +1152,8 @@ export default function App() {
               <p class="reveal__autoplay" aria-live="polite">
                 {settings().controlMode === "auto" && revealAutoplayPending() ? t("reveal.autoplay") : "\u00a0"}
               </p>
-              <button class="button button--quiet reveal__new-round" aria-keyshortcuts="N" onClick={() => void cancelRound()}>
-                ↻ {t("reveal.newRound")}<kbd>{t("shortcut.new")}</kbd>
+              <button class="button button--secondary party-button reveal__new-round" aria-keyshortcuts="N" onClick={() => void startNextRound()}>
+                ✦ {t("reveal.newRound")}<kbd>{t("shortcut.new")}</kbd>
               </button>
             </section>
           </Match>
