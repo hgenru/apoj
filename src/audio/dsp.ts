@@ -117,8 +117,8 @@ export function findSmartBoundaries(clip: AudioClip, options: SplitOptions): num
 
   const duration = totalSamples / clip.sampleRate;
   const target = clamp(options.targetSeconds, 1, 8);
-  const minSeconds = options.minSeconds ?? Math.max(0.85, target * 0.52);
-  const maxSeconds = options.maxSeconds ?? target * 1.65;
+  const minSeconds = options.minSeconds ?? Math.max(0.8, target * 0.52);
+  const maxSeconds = options.maxSeconds ?? target * 1.45;
   const minimumCount = Math.max(1, Math.ceil(duration / maxSeconds));
   const maximumCount = Math.max(1, Math.floor(duration / minSeconds));
   const chunkCount = clamp(Math.round(duration / target), minimumCount, maximumCount);
@@ -234,4 +234,26 @@ export function assembleReveal(attemptsInChallengeOrder: AudioClip[]): AudioClip
 
 export function dbToAmplitude(db: number): number {
   return 10 ** (db / 20);
+}
+
+export interface VoiceGate {
+  startThreshold: number;
+  stopThreshold: number;
+  trimThreshold: number;
+}
+
+/**
+ * Raises the voice gate above the current room noise while preserving the
+ * configured threshold as a minimum. A median keeps a single knock or cheer
+ * during calibration from making the gate unusably high.
+ */
+export function makeAdaptiveVoiceGate(configuredDb: number, ambientLevels: number[]): VoiceGate {
+  const configured = dbToAmplitude(configuredDb);
+  const usable = ambientLevels.filter((value) => Number.isFinite(value) && value >= 0).sort((a, b) => a - b);
+  const ambient = usable.length ? usable[Math.floor((usable.length - 1) * 0.5)] : 0;
+  return {
+    startThreshold: Math.max(configured, ambient * 2.4),
+    stopThreshold: Math.max(configured * 0.72, ambient * 1.45),
+    trimThreshold: Math.max(configured * 0.58, ambient * 1.2),
+  };
 }

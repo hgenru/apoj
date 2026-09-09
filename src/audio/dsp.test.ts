@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assembleReveal, buildChallenge, findSmartBoundaries, trimSilence } from "./dsp";
+import { assembleReveal, buildChallenge, findSmartBoundaries, makeAdaptiveVoiceGate, trimSilence } from "./dsp";
 import type { AudioClip } from "../types/audio";
 
 function makeClip(seconds: number, sampleRate = 1_000): AudioClip {
@@ -40,10 +40,20 @@ describe("smart audio preparation", () => {
   it("keeps chunks balanced when there are no pauses", () => {
     const clip = makeClip(7.8);
     fillTone(clip, 0, 7.8);
-    const boundaries = findSmartBoundaries(clip, { targetSeconds: 2.6 });
+    const boundaries = findSmartBoundaries(clip, { targetSeconds: 2.1 });
     const durations = boundaries.slice(1).map((end, index) => (end - boundaries[index]) / clip.sampleRate);
-    expect(durations).toHaveLength(3);
-    for (const duration of durations) expect(duration).toBeGreaterThan(2.2);
+    expect(durations).toHaveLength(4);
+    for (const duration of durations) {
+      expect(duration).toBeGreaterThan(1.7);
+      expect(duration).toBeLessThan(2.2);
+    }
+  });
+
+  it("sets the voice gate above steady room noise but ignores a single bump", () => {
+    const gate = makeAdaptiveVoiceGate(-42, [0.009, 0.01, 0.01, 0.011, 0.4]);
+    expect(gate.startThreshold).toBeCloseTo(0.024, 3);
+    expect(gate.stopThreshold).toBeCloseTo(0.0145, 3);
+    expect(gate.startThreshold).toBeGreaterThan(gate.stopThreshold);
   });
 
   it("implements the APОЖ double-reversal order", () => {

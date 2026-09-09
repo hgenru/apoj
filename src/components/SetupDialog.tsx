@@ -70,8 +70,8 @@ export const SetupDialog: Component<SetupDialogProps> = (props) => {
               <span>{t("setup.chunkLength")} <strong>{t("common.seconds", { value: props.settings.targetChunkSeconds.toFixed(1) })}</strong></span>
               <input
                 type="range"
-                min="1.6"
-                max="4.2"
+                min="1.4"
+                max="3.4"
                 step="0.1"
                 value={props.settings.targetChunkSeconds}
                 onInput={(event) => patchSettings({ targetChunkSeconds: Number(event.currentTarget.value) })}

@@ -278,8 +278,8 @@ input:focus-visible {
 .lobby {
   display: grid;
   grid-template-columns: minmax(0, 1.08fr) minmax(330px, 0.82fr);
-  grid-template-rows: 1fr auto;
-  gap: 34px 64px;
+  grid-template-rows: 1fr;
+  gap: 64px;
   width: 100%;
   padding: clamp(42px, 6vh, 72px) 0 30px;
 }
@@ -333,8 +333,8 @@ input:focus-visible {
   max-width: 570px;
   margin: 22px 0;
   color: #c7c5d8;
-  font-size: clamp(1rem, 1.35vw, 1.12rem);
-  line-height: 1.6;
+  font-size: clamp(1.15rem, 1.7vw, 1.38rem);
+  line-height: 1.45;
 }
 
 .lobby__sound {
@@ -343,7 +343,7 @@ input:focus-visible {
   width: fit-content;
   margin-bottom: 25px;
   color: var(--muted);
-  font-size: 0.82rem;
+  font-size: 0.95rem;
   font-weight: 750;
 }
 
@@ -486,6 +486,10 @@ h1 em {
 
 .install-button:hover {
   border-color: var(--mint);
+}
+
+.lobby__panel > .install-button {
+  margin-top: 20px;
 }
 
 .local-note span {
@@ -675,11 +679,20 @@ h1 em {
 }
 
 .secret-tip {
-  margin: -13px 0 26px;
+  margin: 24px 0 28px;
+  font-size: clamp(1rem, 1.4vw, 1.15rem);
 }
 
 .party-tip {
   margin: -7px 0 27px;
+}
+
+.handoff .stage__hint {
+  margin: 28px 0 34px;
+  color: var(--cream);
+  font-size: clamp(1.2rem, 2vw, 1.55rem);
+  font-weight: 750;
+  line-height: 1.4;
 }
 
 .recorder {
@@ -927,7 +940,7 @@ h1 em {
 .challenge__progress {
   margin: 0 0 29px;
   color: var(--muted);
-  font-size: 0.83rem;
+  font-size: 0.95rem;
   font-weight: 900;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -977,6 +990,11 @@ h1 em {
   animation: soft-bob 900ms ease-in-out infinite alternate;
 }
 
+.challenge-orb--starting {
+  color: var(--yellow);
+  background: rgb(255 209 102 / 7%);
+}
+
 .challenge-orb--waiting {
   color: var(--mint);
 }
@@ -1003,6 +1021,19 @@ h1 em {
   color: var(--night);
   background: var(--mint);
   transform: rotate(-5deg) scale(0.92);
+}
+
+.challenge-orb--missed {
+  color: var(--yellow);
+  background: rgb(255 209 102 / 7%);
+}
+
+.challenge__timing {
+  min-height: 1.5em;
+  margin: 18px 0 0;
+  color: #c7c5d8;
+  font-size: clamp(1rem, 1.5vw, 1.25rem);
+  font-weight: 750;
 }
 
 .reveal__burst {

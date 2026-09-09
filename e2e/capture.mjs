@@ -24,7 +24,7 @@ await challengePage.goto("http://127.0.0.1:4174/");
 await challengePage.getByRole("button", { name: "RU" }).click();
 await challengePage.getByRole("button", { name: "Демо без микрофона" }).click();
 await challengePage.getByRole("button", { name: /Разрезы хорошие/ }).click();
-await challengePage.getByRole("button", { name: /Я готов/ }).click();
+await challengePage.getByRole("button", { name: /Начать/ }).click();
 await challengePage.getByRole("heading", { name: /тот же кусок/ }).waitFor();
 await challengePage.screenshot({ path: "test-results/repeat-gap-review.png", fullPage: true });
 await challengePage.getByRole("button", { name: /Послушать ещё раз/ }).waitFor();

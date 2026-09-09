@@ -38,9 +38,9 @@ This makes normal phrasing win when pauses exist, while remaining predictable fo
 
 Current defaults:
 
-- target: 2.6 seconds;
-- minimum: 52% of target, never below 0.85 seconds;
-- maximum: 165% of target;
+- target: 2.1 seconds;
+- minimum: 52% of target, never below 0.8 seconds;
+- maximum: 145% of target;
 - draggable boundary minimum spacing: 0.55 seconds;
 - playback edge fade: 7 ms.
 
@@ -48,8 +48,11 @@ Current defaults:
 
 - Browser echo cancellation, noise suppression, and automatic gain control are disabled so a USB mixer signal is not altered.
 - Stereo input can be mixed to mono or restricted to the left or right channel.
-- Three consecutive 50 ms frames above the configured threshold mark voice onset.
-- After onset, 700 ms of silence stops recording.
+- The five-second pre-roll doubles as room-noise calibration before every answer.
+- The start and stop gates adapt above the median room level while respecting the configured minimum threshold.
+- Five consecutive 50 ms frames above the adaptive start gate mark voice onset, filtering out brief knocks and shuffles.
+- After onset, 950 ms of silence stops recording; a lower stop gate adds hysteresis.
+- A manual start button remains available if an unusually loud room defeats voice detection.
 - A duration guard prevents permanent recording when room noise never falls below the threshold.
 
 For reliable party use, route only the active vocal microphone to the recorded USB bus. Music and unused microphones can otherwise defeat silence detection.
