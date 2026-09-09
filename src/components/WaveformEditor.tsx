@@ -32,7 +32,7 @@ export const WaveformEditor: Component<WaveformEditorProps> = (props) => {
       let peak = 0;
       for (let index = start; index < end; index += 1) peak = Math.max(peak, Math.abs(props.clip.samples[index]));
       const x = (bin / (bins - 1)) * WIDTH;
-      const amplitude = Math.max(1.5, peak * (HEIGHT * 0.43));
+      const amplitude = Math.max(1.5, peak * (HEIGHT * 0.35));
       path += `M${x.toFixed(2)},${(center - amplitude).toFixed(2)}V${(center + amplitude).toFixed(2)}`;
     }
     return path;
@@ -93,8 +93,8 @@ export const WaveformEditor: Component<WaveformEditorProps> = (props) => {
         <For each={chunks()}>
           {(chunk) => (
             <g class="chunk-label" onPointerDown={() => setSelected(chunk.index)}>
-              <circle cx={(xForSample(chunk.start) + xForSample(chunk.end)) / 2} cy="27" r="16" />
-              <text x={(xForSample(chunk.start) + xForSample(chunk.end)) / 2} y="32">{chunk.index + 1}</text>
+              <circle cx={(xForSample(chunk.start) + xForSample(chunk.end)) / 2} cy="210" r="13" />
+              <text x={(xForSample(chunk.start) + xForSample(chunk.end)) / 2} y="214">{chunk.index + 1}</text>
             </g>
           )}
         </For>
@@ -109,10 +109,11 @@ export const WaveformEditor: Component<WaveformEditorProps> = (props) => {
                 event.preventDefault();
               }}
             >
-              <line y1="0" y2={HEIGHT} />
-              <rect x="-12" y="92" width="24" height="46" rx="12" />
-              <circle cx="-3.5" cy="115" r="1.6" />
-              <circle cx="3.5" cy="115" r="1.6" />
+              <rect class="boundary-handle__hit" x="-18" y="0" width="36" height={HEIGHT} />
+              <line y1="32" y2={HEIGHT} />
+              <rect class="boundary-handle__grip" x="-8" y="3" width="16" height="29" rx="8" />
+              <circle cx="-2.5" cy="17.5" r="1.25" />
+              <circle cx="2.5" cy="17.5" r="1.25" />
             </g>
           )}
         </For>

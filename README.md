@@ -21,15 +21,15 @@ No server, account, or internet connection is required after the app has been lo
 2. Player one records a verse or chorus normally.
 3. APOZH trims the recording and proposes chunk boundaries near quiet parts of the performance.
 4. Check the waveform. Drag a divider if it cuts through a word, then invite player two back.
-5. Player two hears each reversed chunk twice, with a two-second visible countdown between repeats.
+5. Player two hears each reversed chunk one, two, or three times, with a clear pause between repeats.
 6. After a short preparation countdown and a beep, player two imitates the sound. In Auto mode, recording starts on their voice and stops on silence.
 7. APOZH joins the imitations with a tiny breathing gap, reverses the complete recording, and plays the result. In Auto mode, the result starts automatically after a short reveal pause.
 
 During the challenge, **Listen again** replays the current chunk. **Discard and try again** throws away the current take, while **Record again** replaces a take that has just finished. **Pause** safely stops playback or recording; continuing restarts that fragment from the beginning.
 
-Choose **Auto** or **Manual** directly on the home screen. Auto runs a hands-free round driven by voice detection. Manual is safer in a noisy room: playback repeats still run automatically, while large on-screen controls start and stop recording and advance to the next fragment.
+Choose **Auto** or **Manual** directly on the home screen. Auto runs a hands-free round driven by voice detection. Manual is safer in a noisy room: playback repeats still run automatically, while large on-screen controls start and stop recording and advance to the next fragment. Manual takes show an elapsed timer and stop at a generous safety limit if nobody presses the button.
 
-`Space` performs the large primary action and `R` repeats or replaces the current take. During the challenge, `P` or Play/Pause pauses and resumes the round. `Backspace` or Previous Track returns to the previous safe step, while Next Track performs the primary action. On the reveal screen, `O` plays the original and `N` starts a fresh round immediately. The relevant shortcut is shown on every button that has one.
+On a TV, use the remote's arrow buttons to move focus and **OK/Enter** to activate a control; focus stays inside the open Setup dialog. On a keyboard, `Space` performs the large primary action and `R` repeats or replaces the current take. During the challenge, `P` or Play/Pause pauses and resumes the round. `Backspace` or Previous Track returns to the previous safe step, while Next Track performs the primary action. On the reveal screen, `O` plays the original and `N` starts a fresh round immediately. The relevant keyboard shortcut is shown on every button that has one.
 
 ## Install the PWA and play offline
 
@@ -49,7 +49,7 @@ Open **Setup** before the party and select the desired audio input. Stereo USB d
 
 Browser echo cancellation, noise suppression, and automatic gain control are disabled to preserve the signal from an external mixer. Playback uses the operating system's selected output device.
 
-Before every automatic answer, APOZH measures the current room level and raises its voice gate above that baseline. Brief bumps are ignored, and an answer is only started by a sustained signal. For the most reliable automatic stopping, still route only the active vocal microphone into the USB recording bus: music and unused microphones can keep the level above the silence threshold. The minimum voice level and target chunk duration can be adjusted in Setup.
+Before every automatic answer, APOZH measures the current room level and raises its voice gate above that baseline. Brief bumps are ignored, and an answer is only started by a sustained signal. For the most reliable automatic stopping, still route only the active vocal microphone into the USB recording bus: music and unused microphones can keep the level above the silence threshold. Setup can measure a comfortable minimum from three seconds of singing, and the slider remains available for a quick manual adjustment. The target chunk duration is adjustable too; its labels describe whether it produces more short chunks or fewer long ones.
 
 ## Audio and privacy
 
@@ -87,7 +87,7 @@ npm run build        # type-check and create dist/
 npm run preview      # serve the production build locally
 ```
 
-The end-to-end suite uses a fake Chromium microphone to exercise `getUserMedia`, the AudioWorklet recorder, waveform generation, repeat controls, the web app manifest, and offline reloads.
+The end-to-end suite uses a fake Chromium microphone to exercise `getUserMedia`, voice calibration, the AudioWorklet recorder, waveform generation, manual safety limits, TV focus navigation, repeat controls, social metadata, the web app manifest, and offline reloads.
 
 ## Deploy to Cloudflare
 

@@ -16,7 +16,7 @@ await page.getByRole("group", { name: "Повторов фрагмента" }).g
 await page.getByRole("button", { name: "Закрыть", exact: true }).first().click();
 await page.getByRole("button", { name: /^Вручную/ }).click();
 await page.getByRole("button", { name: /Начать раунд/ }).click();
-await page.getByRole("button", { name: "Проверить микрофон" }).click();
+await page.getByRole("button", { name: "Подключить микрофон" }).click();
 await page.getByText(/Микрофон готов/).waitFor();
 await page.waitForTimeout(180);
 await page.screenshot({ path: "test-results/setup-connected-review.png", fullPage: true });

@@ -10,7 +10,7 @@ export interface GameSettings {
   channelMode: ChannelMode;
   controlMode: ControlMode;
   targetChunkSeconds: number;
-  repeats: 1 | 2;
+  repeats: 1 | 2 | 3;
   voiceThresholdDb: number;
   silenceMs: number;
 }

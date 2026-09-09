@@ -55,6 +55,16 @@ input:focus-visible {
   outline-offset: 3px;
 }
 
+body[data-tv-navigation] button:focus,
+body[data-tv-navigation] select:focus,
+body[data-tv-navigation] input:focus,
+body[data-tv-navigation] a:focus,
+body[data-tv-navigation] [tabindex]:focus {
+  outline: 4px solid var(--yellow);
+  outline-offset: 5px;
+  box-shadow: 0 0 0 8px rgb(255 209 102 / 12%);
+}
+
 .app-shell {
   position: relative;
   isolation: isolate;
@@ -98,6 +108,7 @@ input:focus-visible {
 }
 
 .topbar {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -105,6 +116,21 @@ input:focus-visible {
   min-height: 100px;
   margin: 0 auto;
   border-bottom: 1px solid var(--line);
+}
+
+.remote-hint {
+  position: absolute;
+  left: 50%;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  color: var(--muted);
+  background: rgb(255 255 255 / 3%);
+  font-size: 0.75rem;
+  font-weight: 850;
+  letter-spacing: 0.07em;
+  pointer-events: none;
+  transform: translateX(-50%);
 }
 
 .brand {
@@ -423,6 +449,15 @@ input:focus-visible {
   background: var(--yellow);
   font-size: 1.4rem;
   font-weight: 950;
+  line-height: 1;
+}
+
+.lobby-mode__icon--manual i {
+  display: block;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: currentColor;
 }
 
 .lobby-mode__option:nth-child(2) .lobby-mode__icon {
@@ -1231,8 +1266,37 @@ kbd {
 }
 
 .challenge-live-wave {
+  position: relative;
   width: min(1100px, 86vw);
   height: clamp(250px, 31vh, 340px);
+}
+
+.challenge-live-wave__timer {
+  position: absolute;
+  top: 22px;
+  right: 24px;
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  min-width: 150px;
+  padding: 12px 16px;
+  border: 1px solid rgb(255 102 92 / 32%);
+  border-radius: 15px;
+  color: var(--coral);
+  background: rgb(21 20 44 / 88%);
+  font-variant-numeric: tabular-nums;
+  justify-content: center;
+}
+
+.challenge-live-wave__timer strong {
+  font-family: var(--display);
+  font-size: 1.6rem;
+}
+
+.challenge-live-wave__timer span {
+  color: #c7c5d8;
+  font-size: 1rem;
+  font-weight: 800;
 }
 
 .challenge-screen__command {
@@ -1390,14 +1454,18 @@ kbd {
 
 .boundary-handle line {
   stroke: var(--coral);
-  stroke-width: 2;
+  stroke-width: 1.25;
   vector-effect: non-scaling-stroke;
 }
 
-.boundary-handle rect {
+.boundary-handle__hit {
+  fill: transparent;
+}
+
+.boundary-handle .boundary-handle__grip {
   fill: var(--coral);
   stroke: var(--night);
-  stroke-width: 4;
+  stroke-width: 3;
   vector-effect: non-scaling-stroke;
 }
 
@@ -1555,7 +1623,7 @@ kbd {
   color: var(--night);
   background: var(--yellow);
   font-family: var(--display);
-  animation: record-spin 2.8s linear infinite;
+  animation: record-spin 3.25s linear infinite;
 }
 
 .challenge-orb--starting {
@@ -1813,14 +1881,23 @@ kbd {
 
 .icon-button {
   display: grid;
+  width: 40px;
   flex: 0 0 40px;
   height: 40px;
+  padding: 0;
   place-items: center;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: rgb(255 255 255 / 4%);
   font-size: 1.5rem;
+  line-height: 1;
   cursor: pointer;
+}
+
+.icon-button > span {
+  display: block;
+  line-height: 0.8;
+  transform: translateY(-1px);
 }
 
 .setup-layout {
@@ -1934,7 +2011,32 @@ input[type="range"] {
 
 .range-labels {
   display: flex;
+  gap: 18px;
   justify-content: space-between;
+}
+
+.range-labels small:last-child {
+  text-align: right;
+}
+
+.calibration-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 3px;
+}
+
+.calibration-button {
+  flex: 0 0 auto;
+  min-height: 48px;
+  padding-inline: 16px;
+  font-size: 0.9rem;
+}
+
+.calibration-result {
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.35;
 }
 
 .sound-check {
@@ -2023,6 +2125,10 @@ input[type="range"] {
 }
 
 @media (max-width: 820px) {
+  .remote-hint {
+    display: none;
+  }
+
   .topbar,
   .main-content {
     width: min(100% - 28px, 680px);
@@ -2059,6 +2165,11 @@ input[type="range"] {
 
   .setup-layout {
     grid-template-columns: 1fr;
+  }
+
+  .calibration-row {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .party-reveal {

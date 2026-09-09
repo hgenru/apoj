@@ -1,4 +1,5 @@
-import { For, Show, type Component } from "solid-js";
+import { For, Show, createEffect, createSignal, onCleanup, type Component } from "solid-js";
+import { thresholdFromVoiceLevels } from "../audio/calibration";
 import type { AudioDeviceChoice, GameSettings } from "../types/audio";
 import { t } from "../i18n";
 import { LevelMeter } from "./LevelMeter";
@@ -23,17 +24,64 @@ interface SetupDialogProps {
 
 export const SetupDialog: Component<SetupDialogProps> = (props) => {
   const patchSettings = (patch: Partial<GameSettings>) => props.onSettingsChange({ ...props.settings, ...patch });
+  const [calibrationState, setCalibrationState] = createSignal<"idle" | "listening" | "done" | "missed">("idle");
+  const [calibrationSeconds, setCalibrationSeconds] = createSignal(3);
+  let calibrationTimer: number | undefined;
+  let calibrationDeadline = 0;
+  let calibrationLevels: number[] = [];
+
+  const stopCalibration = () => {
+    window.clearInterval(calibrationTimer);
+    calibrationTimer = undefined;
+  };
+
+  const close = () => {
+    stopCalibration();
+    setCalibrationState("idle");
+    props.onClose();
+  };
+
+  const startCalibration = () => {
+    if (!props.ready || calibrationState() === "listening") return;
+    stopCalibration();
+    calibrationLevels = [];
+    calibrationDeadline = performance.now() + 3_000;
+    setCalibrationSeconds(3);
+    setCalibrationState("listening");
+    calibrationTimer = window.setInterval(() => {
+      calibrationLevels.push(props.level);
+      const remaining = Math.max(0, calibrationDeadline - performance.now());
+      setCalibrationSeconds(Math.max(1, Math.ceil(remaining / 1_000)));
+      if (remaining > 0) return;
+      stopCalibration();
+      const threshold = thresholdFromVoiceLevels(calibrationLevels);
+      if (threshold === undefined) {
+        setCalibrationState("missed");
+      } else {
+        patchSettings({ voiceThresholdDb: threshold });
+        setCalibrationState("done");
+      }
+    }, 50);
+  };
+
+  createEffect(() => {
+    if (!props.open) {
+      stopCalibration();
+      setCalibrationState("idle");
+    }
+  });
+  onCleanup(stopCalibration);
 
   return (
     <Show when={props.open}>
-      <div class="modal-backdrop" role="presentation" onPointerDown={(event) => event.target === event.currentTarget && props.onClose()}>
-        <section class="setup-card" role="dialog" aria-modal="true" aria-labelledby="setup-title">
+      <div class="modal-backdrop" role="presentation" onPointerDown={(event) => event.target === event.currentTarget && close()}>
+        <section class="setup-card" role="dialog" aria-modal="true" aria-labelledby="setup-title" onKeyDown={(event) => event.key === "Escape" && close()}>
           <div class="setup-card__header">
             <div>
               <p class="eyebrow">{t("setup.eyebrow")}</p>
               <h2 id="setup-title">{t("setup.title")}</h2>
             </div>
-            <button class="icon-button" type="button" onClick={props.onClose} aria-label={t("common.close")}>×</button>
+            <button class="icon-button" type="button" onClick={close} aria-label={t("common.close")}><span aria-hidden="true">×</span></button>
           </div>
 
           <div class="setup-layout">
@@ -49,7 +97,6 @@ export const SetupDialog: Component<SetupDialogProps> = (props) => {
                   <option value="">{t("setup.defaultInput")}</option>
                   <For each={props.devices}>{(device) => <option value={device.deviceId}>{device.label}</option>}</For>
                 </select>
-                <small>{t("setup.deviceHint")}</small>
               </label>
 
               <div class="field">
@@ -67,7 +114,6 @@ export const SetupDialog: Component<SetupDialogProps> = (props) => {
                   <span>{props.ready ? t("setup.ready") : t("setup.notReady")}</span>
                 </div>
                 <LevelMeter level={props.level} />
-                <small>{t("setup.outputHint")}</small>
               </div>
             </section>
 
@@ -82,6 +128,7 @@ export const SetupDialog: Component<SetupDialogProps> = (props) => {
                 <div class="segmented segmented--large" role="group" aria-label={t("setup.repeats")}>
                   <button type="button" aria-pressed={props.settings.repeats === 1} classList={{ active: props.settings.repeats === 1 }} onClick={() => patchSettings({ repeats: 1 })}>{t("setup.once")}</button>
                   <button type="button" aria-pressed={props.settings.repeats === 2} classList={{ active: props.settings.repeats === 2 }} onClick={() => patchSettings({ repeats: 2 })}>{t("setup.twice")}</button>
+                  <button type="button" aria-pressed={props.settings.repeats === 3} classList={{ active: props.settings.repeats === 3 }} onClick={() => patchSettings({ repeats: 3 })}>{t("setup.thrice")}</button>
                 </div>
               </div>
 
@@ -95,7 +142,7 @@ export const SetupDialog: Component<SetupDialogProps> = (props) => {
                   value={props.settings.targetChunkSeconds}
                   onInput={(event) => patchSettings({ targetChunkSeconds: Number(event.currentTarget.value) })}
                 />
-                <div class="range-labels"><small>{t("setup.harder")}</small><small>{t("setup.easier")}</small></div>
+                <div class="range-labels"><small>{t("setup.shortChunks")}</small><small>{t("setup.longChunks")}</small></div>
               </label>
 
               <label class="field">
@@ -106,28 +153,42 @@ export const SetupDialog: Component<SetupDialogProps> = (props) => {
                   max="-28"
                   step="1"
                   value={props.settings.voiceThresholdDb}
-                  onInput={(event) => patchSettings({ voiceThresholdDb: Number(event.currentTarget.value) })}
+                  onInput={(event) => {
+                    setCalibrationState("idle");
+                    patchSettings({ voiceThresholdDb: Number(event.currentTarget.value) });
+                  }}
                 />
-                <small>{t("setup.sensitivityHint")}</small>
+                <div class="range-labels"><small>{t("setup.quieterVoice")}</small><small>{t("setup.louderVoice")}</small></div>
+                <Show when={props.ready}>
+                  <div class="calibration-row">
+                    <button class="button button--ghost calibration-button" type="button" disabled={calibrationState() === "listening"} onClick={startCalibration}>
+                      {calibrationState() === "listening"
+                        ? t("setup.calibrating", { seconds: calibrationSeconds() })
+                        : t("setup.calibrate")}
+                    </button>
+                    <span class="calibration-result" aria-live="polite">
+                      {calibrationState() === "done"
+                        ? t("setup.calibrated", { level: props.settings.voiceThresholdDb })
+                        : calibrationState() === "missed" ? t("setup.calibrationMissed") : t("setup.sensitivityHint")}
+                    </span>
+                  </div>
+                </Show>
               </label>
             </section>
           </div>
 
           <Show when={props.error}><p class="error-message" role="alert">{props.error}</p></Show>
           <div class="setup-actions">
-            <button class="button button--ghost" type="button" onClick={props.onClose}>{t("common.close")}</button>
+            <button class="button button--ghost" type="button" onClick={close}>{t("common.close")}</button>
             <Show
               when={props.ready && !props.deviceDirty}
               fallback={
-                <button class="button button--primary" type="button" disabled={props.busy} onClick={props.onConnect}>
-                  {props.busy ? t("setup.connecting") : props.deviceDirty ? t("setup.applyInput") : t("setup.checkMic")}
+                <button class="button button--primary" type="button" data-tv-default disabled={props.busy} onClick={props.onConnect}>
+                  {props.busy ? t("setup.connecting") : props.deviceDirty ? t("setup.applyInput") : t("setup.connectMic")}
                 </button>
               }
             >
-              <button class="button button--quiet" type="button" disabled={props.busy} onClick={props.onConnect}>
-                {props.busy ? t("setup.connecting") : t("setup.reconnect")}
-              </button>
-              <button class="button button--primary" type="button" onClick={props.onDone}>
+              <button class="button button--primary" type="button" data-tv-default onClick={props.onDone}>
                 {props.purpose === "round" ? t("setup.startRound") : t("common.done")}
               </button>
             </Show>

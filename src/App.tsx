@@ -14,6 +14,7 @@ import { LiveWaveform } from "./components/LiveWaveform";
 import { SetupDialog } from "./components/SetupDialog";
 import { WaveformEditor } from "./components/WaveformEditor";
 import { locale, setLocale, t } from "./i18n";
+import { focusTvDefault, installTvNavigation } from "./lib/tvNavigation";
 import type { AudioClip, AudioDeviceChoice, GameSettings } from "./types/audio";
 
 type Stage = "home" | "source" | "edit" | "handoff" | "challenge" | "reveal";
@@ -58,6 +59,7 @@ function readSettings(): GameSettings {
     }
     if (saved?.silenceMs === 700) migrated.silenceMs = DEFAULT_SETTINGS.silenceMs;
     migrated.targetChunkSeconds = Math.min(3.4, Math.max(1.4, migrated.targetChunkSeconds));
+    if (![1, 2, 3].includes(migrated.repeats)) migrated.repeats = DEFAULT_SETTINGS.repeats;
     return migrated;
   } catch {
     return DEFAULT_SETTINGS;
@@ -100,6 +102,8 @@ export default function App() {
   const [redoRequested, setRedoRequested] = createSignal(false);
   const [challengePaused, setChallengePaused] = createSignal(false);
   const [pausedChallengeIndex, setPausedChallengeIndex] = createSignal(0);
+  const [manualRecordSeconds, setManualRecordSeconds] = createSignal(0);
+  const [manualRecordLimit, setManualRecordLimit] = createSignal(0);
   const [revealAutoplayPending, setRevealAutoplayPending] = createSignal(false);
   const [installPrompt, setInstallPrompt] = createSignal<BeforeInstallPromptEvent>();
   const [installed, setInstalled] = createSignal(
@@ -107,6 +111,8 @@ export default function App() {
       || Boolean((navigator as Navigator & { standalone?: boolean }).standalone),
   );
   let sourceTimer: number | undefined;
+  let manualRecordingTimer: number | undefined;
+  let manualRecordingTimeout: number | undefined;
   let revealAutoplayTimer: number | undefined;
   let challengeRun = 0;
   let challengeTask: Promise<void> | undefined;
@@ -160,6 +166,20 @@ export default function App() {
   });
 
   createEffect(() => {
+    stage();
+    setupOpen();
+    const busy = setupBusy();
+    micReady();
+    setupDeviceDirty();
+    challengeStatus();
+    challengePaused();
+    sourceRecording();
+    if (busy) return;
+    const frame = window.requestAnimationFrame(() => focusTvDefault());
+    onCleanup(() => window.cancelAnimationFrame(frame));
+  });
+
+  createEffect(() => {
     if (!micReady()) {
       setLevel(0);
       return;
@@ -177,10 +197,13 @@ export default function App() {
   onCleanup(() => {
     challengeRun += 1;
     window.clearInterval(sourceTimer);
+    window.clearInterval(manualRecordingTimer);
+    window.clearTimeout(manualRecordingTimeout);
     void engine.dispose();
   });
 
   onMount(() => {
+    const disposeTvNavigation = installTvNavigation();
     const handleInstallPrompt = (event: Event) => {
       event.preventDefault();
       setInstallPrompt(event as BeforeInstallPromptEvent);
@@ -192,6 +215,7 @@ export default function App() {
     window.addEventListener("beforeinstallprompt", handleInstallPrompt);
     window.addEventListener("appinstalled", handleInstalled);
     onCleanup(() => {
+      disposeTvNavigation();
       window.removeEventListener("beforeinstallprompt", handleInstallPrompt);
       window.removeEventListener("appinstalled", handleInstalled);
     });
@@ -237,6 +261,12 @@ export default function App() {
     setRedoRequested(false);
     setChallengePaused(false);
     setPausedChallengeIndex(0);
+    window.clearInterval(manualRecordingTimer);
+    window.clearTimeout(manualRecordingTimeout);
+    manualRecordingTimer = undefined;
+    manualRecordingTimeout = undefined;
+    setManualRecordSeconds(0);
+    setManualRecordLimit(0);
   };
 
   const beginRound = () => {
@@ -366,19 +396,32 @@ export default function App() {
     };
   };
 
-  const captureManualAttempt = async (token: number): Promise<CapturedAttempt | undefined> => {
+  const captureManualAttempt = async (token: number, expectedClip: AudioClip): Promise<CapturedAttempt | undefined> => {
     setLiveWaveform([]);
     engine.startRecording();
     setChallengeStatus("recording");
+    const expectedSeconds = expectedClip.samples.length / expectedClip.sampleRate;
+    const maximumMs = Math.min(15_000, Math.max(7_000, expectedSeconds * 2_200 + 3_000));
+    const startedAt = performance.now();
+    setManualRecordSeconds(0);
+    setManualRecordLimit(Math.ceil(maximumMs / 1_000));
 
     await new Promise<void>((resolve) => {
       let finished = false;
       stopCurrentAttempt = () => {
         if (finished) return;
         finished = true;
+        window.clearInterval(manualRecordingTimer);
+        window.clearTimeout(manualRecordingTimeout);
+        manualRecordingTimer = undefined;
+        manualRecordingTimeout = undefined;
         stopCurrentAttempt = undefined;
         resolve();
       };
+      manualRecordingTimer = window.setInterval(() => {
+        setManualRecordSeconds(Math.min(maximumMs, performance.now() - startedAt) / 1_000);
+      }, 100);
+      manualRecordingTimeout = window.setTimeout(() => stopCurrentAttempt?.(), maximumMs);
     });
 
     const recorded = await engine.stopRecording();
@@ -513,7 +556,7 @@ export default function App() {
         if (token !== challengeRun) return;
         const captured = settings().controlMode === "auto"
           ? await captureAutomaticAttempt(token, clip, ambientLevels)
-          : await captureManualAttempt(token);
+          : await captureManualAttempt(token, clip);
         if (!captured || token !== challengeRun) return;
         if (redoRequested()) {
           setAttempts((current) => current.slice(0, index));
@@ -804,6 +847,7 @@ export default function App() {
           <span class="brand__mark">↶</span>
           <span>{t("app.name")}</span>
         </button>
+        <div class="remote-hint" aria-hidden="true">{t("nav.remote")}</div>
         <Show when={stage() === "home"}>
           <div class="topbar__actions">
             <div class="language-switcher" role="group" aria-label={t("app.language")}>
@@ -828,7 +872,7 @@ export default function App() {
               {t("nav.back")}<kbd>{t("shortcut.back")}</kbd>
             </button>
             <Show when={stage() === "challenge"}>
-              <button class="button button--secondary topbar__round-control" type="button" aria-keyshortcuts="P MediaPlayPause" onClick={toggleChallengePause}>
+              <button class="button button--secondary topbar__round-control" type="button" data-tv-default aria-keyshortcuts="P MediaPlayPause" onClick={toggleChallengePause}>
                 {challengePaused() ? t("challenge.resume") : t("challenge.pause")}<kbd>{t("shortcut.pause")}</kbd>
               </button>
               <button class="button button--ghost topbar__round-exit" type="button" onClick={() => void cancelRound()}>
@@ -869,7 +913,7 @@ export default function App() {
                       classList={{ "lobby-mode__option": true, active: settings().controlMode === "manual" }}
                       onClick={() => setSettings((current) => ({ ...current, controlMode: "manual" }))}
                     >
-                      <span class="lobby-mode__icon" aria-hidden="true">●</span>
+                      <span class="lobby-mode__icon lobby-mode__icon--manual" aria-hidden="true"><i /></span>
                       <span><strong>{t("setup.modeManual")}</strong><small>{t("setup.modeManualHint")}</small></span>
                       <kbd>2</kbd>
                     </button>
@@ -880,7 +924,7 @@ export default function App() {
                   {micReady() ? t("home.soundReady") : t("home.soundMissing")}
                 </div>
                 <div class="lobby__actions">
-                  <button class="button button--primary party-button" aria-keyshortcuts="Space" onClick={beginRound}>
+                  <button class="button button--primary party-button" data-tv-default aria-keyshortcuts="Space" onClick={beginRound}>
                     {t("home.start")}<kbd>{t("shortcut.primary")}</kbd>
                   </button>
                 </div>
@@ -919,6 +963,7 @@ export default function App() {
                 <button
                   classList={{ "button": true, "button--primary": !sourceRecording(), "button--secondary": sourceRecording(), "party-button": true }}
                   aria-label={sourceRecording() ? t("record.stop") : t("record.start")}
+                  data-tv-default
                   aria-keyshortcuts="Space"
                   onClick={() => sourceRecording() ? void stopSourceRecording() : startSourceRecording()}
                 >
@@ -946,7 +991,7 @@ export default function App() {
                 <WaveformEditor clip={clip()} boundaries={boundaries()} onChange={setBoundaries} onPlay={playEditorChunk} />
                 <div class="stage-actions stage-actions--end">
                   <button class="button button--ghost party-button" onClick={splitAgain}>↻ {t("edit.auto")}</button>
-                  <button class="button button--primary party-button" aria-keyshortcuts="Space" onClick={() => setStage("handoff")}>
+                  <button class="button button--primary party-button" data-tv-default aria-keyshortcuts="Space" onClick={() => setStage("handoff")}>
                     {t("edit.accept")}<kbd>{t("shortcut.primary")}</kbd>
                   </button>
                 </div>
@@ -960,7 +1005,7 @@ export default function App() {
               <div class="handoff__icon" aria-hidden="true">🎤<span>2</span></div>
               <h1>{t("handoff.inviteBack")}</h1>
               <p class="stage__hint">{t("handoff.description")}</p>
-              <button class="button button--primary party-button" aria-keyshortcuts="Space" onClick={() => launchChallenge()}>
+              <button class="button button--primary party-button" data-tv-default aria-keyshortcuts="Space" onClick={() => launchChallenge()}>
                 {t("handoff.start")}<kbd>{t("shortcut.primary")}</kbd>
               </button>
             </section>
@@ -1014,6 +1059,12 @@ export default function App() {
                           active={challengeStatus() === "recording"}
                           tone={challengeStatus() === "recording" ? "coral" : "mint"}
                         />
+                        <Show when={challengeStatus() === "recording" && settings().controlMode === "manual"}>
+                          <div class="challenge-live-wave__timer" aria-label={t("challenge.manualLimit", { seconds: manualRecordLimit() })}>
+                            <strong>{formatClock(manualRecordSeconds())}</strong>
+                            <span>/ {formatClock(manualRecordLimit())}</span>
+                          </div>
+                        </Show>
                       </div>
                     </Show>
                   }
@@ -1050,6 +1101,9 @@ export default function App() {
                       <div class="challenge-screen__support">
                         <Show when={challengeStatus() === "ready" && settings().controlMode === "auto"}>{t("challenge.autoStarts")}</Show>
                         <Show when={challengeStatus() === "waiting"}>{t("challenge.autoListening")}</Show>
+                        <Show when={challengeStatus() === "recording" && settings().controlMode === "manual"}>
+                          {t("challenge.manualLimit", { seconds: manualRecordLimit() })}
+                        </Show>
                         <Show when={challengeStatus() === "saved" && settings().controlMode === "auto"}>
                           {hasNextChallengeClip() ? t("challenge.nextSoon") : t("challenge.revealSoon")}
                         </Show>
@@ -1075,18 +1129,18 @@ export default function App() {
                           ↶ {t("challenge.listenAgain")}<kbd>{t("shortcut.repeat")}</kbd>
                         </button>
                         <Show when={settings().controlMode === "manual"}>
-                          <button class="button button--primary party-button" aria-keyshortcuts="Space" onClick={() => requestReadyProceed?.()}>
+                          <button class="button button--primary party-button" data-tv-default aria-keyshortcuts="Space" onClick={() => requestReadyProceed?.()}>
                             ● {t("challenge.startRecording")}<kbd>{t("shortcut.primary")}</kbd>
                           </button>
                         </Show>
                       </Show>
                       <Show when={challengeStatus() === "waiting"}>
-                        <button class="button button--secondary party-button" aria-keyshortcuts="Space" onClick={() => startCurrentAttempt?.()}>
+                        <button class="button button--secondary party-button" data-tv-default aria-keyshortcuts="Space" onClick={() => startCurrentAttempt?.()}>
                           {t("challenge.startManual")}<kbd>{t("shortcut.primary")}</kbd>
                         </button>
                       </Show>
                       <Show when={challengeStatus() === "recording"}>
-                        <button class="button button--secondary party-button" aria-keyshortcuts="Space" onClick={() => stopCurrentAttempt?.()}>
+                        <button class="button button--secondary party-button" data-tv-default aria-keyshortcuts="Space" onClick={() => stopCurrentAttempt?.()}>
                           ■ {t("challenge.stop")}<kbd>{t("shortcut.primary")}</kbd>
                         </button>
                         <button
@@ -1105,20 +1159,20 @@ export default function App() {
                           ↶ {t("challenge.redo")}<kbd>{t("shortcut.repeat")}</kbd>
                         </button>
                         <Show when={settings().controlMode === "manual"}>
-                          <button class="button button--primary party-button" aria-keyshortcuts="Space" onClick={() => requestSavedNext?.()}>
+                          <button class="button button--primary party-button" data-tv-default aria-keyshortcuts="Space" onClick={() => requestSavedNext?.()}>
                             {hasNextChallengeClip() ? t("challenge.next") : t("challenge.showResult")}<kbd>{t("shortcut.primary")}</kbd>
                           </button>
                         </Show>
                       </Show>
                       <Show when={challengeStatus() === "missed"}>
-                        <button class="button button--primary party-button" aria-keyshortcuts="Space" onClick={() => requestMissedRetry?.()}>
+                        <button class="button button--primary party-button" data-tv-default aria-keyshortcuts="Space" onClick={() => requestMissedRetry?.()}>
                           ↻ {t("challenge.tryAgain")}<kbd>{t("shortcut.primary")}</kbd>
                         </button>
                       </Show>
                     </>
                   }
                 >
-                  <button class="button button--primary party-button" aria-keyshortcuts="Space" onClick={() => void resumeChallenge()}>
+                  <button class="button button--primary party-button" data-tv-default aria-keyshortcuts="Space" onClick={() => void resumeChallenge()}>
                     {t("challenge.resume")}<kbd>{t("shortcut.primary")}</kbd>
                   </button>
                 </Show>
@@ -1142,7 +1196,7 @@ export default function App() {
                 <p class="stage__hint">{t("reveal.description")}</p>
               </div>
               <div class="reveal__actions">
-                <button class="button button--primary party-button" aria-keyshortcuts="Space" onClick={playRevealResult}>
+                <button class="button button--primary party-button" data-tv-default aria-keyshortcuts="Space" onClick={playRevealResult}>
                   ▶ {t("reveal.playResult")}<kbd>{t("shortcut.primary")}</kbd>
                 </button>
                 <button class="button button--ghost party-button" aria-keyshortcuts="O" onClick={playRevealOriginal}>

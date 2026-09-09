@@ -5,7 +5,7 @@ async function openSourceScreen(page: import("@playwright/test").Page, mode: "А
   await page.getByRole("button", { name: "RU", exact: true }).click();
   await page.getByRole("button", { name: new RegExp(`^${mode}`) }).click();
   await page.getByRole("button", { name: /Начать раунд/ }).click();
-  await page.getByRole("button", { name: "Проверить микрофон" }).click();
+  await page.getByRole("button", { name: "Подключить микрофон" }).click();
   await expect(page.getByText(/Микрофон готов/)).toBeVisible();
   await page.getByRole("button", { name: /Перейти к записи/ }).click();
 }
@@ -40,8 +40,56 @@ test("settings are available without entering a round", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Фрагменты" })).toBeVisible();
   await expect(page.getByRole("group", { name: "Канал микшера" }).getByRole("button", { name: "L + R в моно" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByLabel(/Средняя длина кусочка/)).toHaveValue("2.3");
-  await expect(page.getByRole("button", { name: "Проверить микрофон" })).toBeVisible();
+  const repeats = page.getByRole("group", { name: "Повторов фрагмента" });
+  await expect(repeats.getByRole("button", { name: "3 раза" })).toBeVisible();
+  await repeats.getByRole("button", { name: "3 раза" }).click();
+  await expect(repeats.getByRole("button", { name: "3 раза" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByText("больше коротких")).toBeVisible();
+  await expect(page.getByText("меньше длинных")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Подключить микрофон" })).toBeVisible();
   await expect(page.getByText("Управление раундом")).toHaveCount(0);
+});
+
+test("supports TV arrows and keeps keyboard focus inside setup", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "RU", exact: true }).click();
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByRole("button", { name: /Начать раунд/ })).toBeFocused();
+  await page.keyboard.press("Enter");
+  const connect = page.getByRole("button", { name: "Подключить микрофон" });
+  await expect(connect).toBeFocused();
+  await expect(page.locator("body")).toHaveAttribute("data-tv-navigation", "");
+
+  await page.keyboard.press("Enter");
+  await expect(page.getByText(/Микрофон готов/)).toBeVisible();
+  await expect(page.getByRole("button", { name: /Перейти к записи/ })).toBeFocused();
+
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("button", { name: "Закрыть" }).first()).toBeFocused();
+  await expect(page.getByRole("dialog").locator(":focus")).toHaveCount(1);
+
+  const chunkSlider = page.getByLabel(/Средняя длина кусочка/);
+  await chunkSlider.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(chunkSlider).toBeFocused();
+  await expect(chunkSlider).toHaveValue("2.4");
+
+  await page.getByRole("button", { name: "3 раза" }).click();
+  await expect(page.locator("body")).not.toHaveAttribute("data-tv-navigation", "");
+});
+
+test("calibrates the automatic voice threshold from the live microphone", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "party-tv-1080p", "One real-time calibration pass is enough.");
+  test.setTimeout(25_000);
+  await page.goto("/");
+  await page.getByRole("button", { name: "RU", exact: true }).click();
+  await page.getByRole("button", { name: /Настройки/ }).click();
+  await page.getByRole("button", { name: "Подключить микрофон" }).click();
+  await expect(page.getByRole("button", { name: "Настроить по голосу" })).toBeVisible();
+  await page.getByRole("button", { name: "Настроить по голосу" }).click();
+  await expect(page.getByText(/Уровень настроен: −?-?\d+ dB/)).toBeVisible({ timeout: 5_000 });
 });
 
 test("records PCM through the browser audio worklet", async ({ page }) => {
@@ -85,7 +133,7 @@ test("manual mode waits for explicit recording and next-fragment controls", asyn
   await page.getByRole("button", { name: /Начать раунд/ }).click();
   await page.getByLabel(/Средняя длина кусочка/).fill("1.4");
   await page.getByRole("group", { name: "Повторов фрагмента" }).getByRole("button", { name: "1 раз" }).click();
-  await page.getByRole("button", { name: "Проверить микрофон" }).click();
+  await page.getByRole("button", { name: "Подключить микрофон" }).click();
   await expect(page.getByText(/Микрофон готов/)).toBeVisible();
   await page.getByRole("button", { name: /Перейти к записи/ }).click();
   await recordSource(page, 2_600);
@@ -94,13 +142,17 @@ test("manual mode waits for explicit recording and next-fragment controls", asyn
   await page.getByRole("button", { name: /^Начать/ }).click();
 
   await expect(page.getByRole("heading", { name: /Готов петь/ })).toBeVisible({ timeout: 12_000 });
-  await page.getByRole("button", { name: /Начать запись/ }).click();
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByRole("button", { name: /Начать запись/ })).toBeFocused();
+  await page.keyboard.press("Enter");
   await expect(page.getByRole("heading", { name: /идёт запись/ })).toBeVisible();
-  await page.getByRole("button", { name: /Остановить запись/ }).click();
-  await expect(page.getByRole("heading", { name: /Записано/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Остановить запись/ })).toBeFocused();
+  await expect(page.locator(".challenge-live-wave__timer")).toContainText("/ 0:07");
+  await expect(page.getByRole("heading", { name: /Записано/ })).toBeVisible({ timeout: 9_000 });
+  await expect(page.getByRole("button", { name: /Следующий кусочек/ })).toBeFocused();
   await page.waitForTimeout(3_500);
   await expect(page.getByRole("heading", { name: /Записано/ })).toBeVisible();
-  await page.getByRole("button", { name: /Следующий кусочек/ }).click();
+  await page.keyboard.press("Enter");
   await expect(page.getByRole("heading", { name: /Слушай · 1\/1/ })).toBeVisible();
   await page.getByRole("button", { name: /шаг назад/i }).click();
   await expect(page.getByText("1 / 2", { exact: true })).toBeVisible();
@@ -176,6 +228,21 @@ test("has a valid installable web app manifest", async ({ page, context }) => {
   expect(manifest.errors).toEqual([]);
   const appErrors = installability.installabilityErrors.filter(({ errorId }) => errorId !== "in-incognito");
   expect(appErrors).toEqual([]);
+});
+
+test("publishes a complete social sharing card", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", "https://apoj.saa.sh/");
+  await expect(page.locator('meta[property="og:image"]')).toHaveAttribute("content", "https://apoj.saa.sh/og-apoj.png");
+  await expect(page.locator('meta[property="og:image:width"]')).toHaveAttribute("content", "1200");
+  await expect(page.locator('meta[property="og:image:height"]')).toHaveAttribute("content", "630");
+  await expect(page.locator('meta[name="twitter:card"]')).toHaveAttribute("content", "summary_large_image");
+  const imageResponse = await page.request.get("/og-apoj.png");
+  expect(imageResponse.ok()).toBe(true);
+  expect(imageResponse.headers()["content-type"]).toContain("image/png");
+  const image = await imageResponse.body();
+  expect(image.readUInt32BE(16)).toBe(1200);
+  expect(image.readUInt32BE(20)).toBe(630);
 });
 
 test("reloads while completely offline after the first visit", async ({ page, context }) => {
