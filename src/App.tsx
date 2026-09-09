@@ -44,7 +44,7 @@ const PARTY_TIMING = {
   beforeRecordingMs: 2_400,
   afterSavedMs: 3_000,
   finalSavedMs: 1_500,
-  revealAutoplayMs: 2_200,
+  revealAutoplayMs: 3_200,
 } as const;
 
 function readSettings(): GameSettings {
@@ -717,7 +717,7 @@ export default function App() {
                 </div>
                 <div class="lobby__actions">
                   <button class="button button--primary party-button" aria-keyshortcuts="Space" onClick={beginRound}>
-                    {t("home.start")} <span>→</span><kbd>{t("shortcut.primary")}</kbd>
+                    {t("home.start")}<kbd>{t("shortcut.primary")}</kbd>
                   </button>
                 </div>
                 <Show when={installPrompt() && !installed()}>
@@ -746,11 +746,11 @@ export default function App() {
               </div>
               <div class="source-dock">
                 <div class="source-dock__status">
-                  <span classList={{ "source-dock__dot": true, "source-dock__dot--active": sourceRecording() }} />
-                  <div>
+                  <div class="source-dock__label">
+                    <span classList={{ "source-dock__dot": true, "source-dock__dot--active": sourceRecording() }} />
                     <span>{sourceRecording() ? t("record.listening") : t("record.ready")}</span>
-                    <strong>{formatClock(recordSeconds())}</strong>
                   </div>
+                  <strong>{formatClock(recordSeconds())}</strong>
                 </div>
                 <button
                   classList={{ "button": true, "button--primary": !sourceRecording(), "button--secondary": sourceRecording(), "party-button": true }}
@@ -783,7 +783,7 @@ export default function App() {
                 <div class="stage-actions stage-actions--end">
                   <button class="button button--ghost party-button" onClick={splitAgain}>↻ {t("edit.auto")}</button>
                   <button class="button button--primary party-button" aria-keyshortcuts="Space" onClick={() => setStage("handoff")}>
-                    {t("edit.accept")} <span>→</span><kbd>{t("shortcut.primary")}</kbd>
+                    {t("edit.accept")}<kbd>{t("shortcut.primary")}</kbd>
                   </button>
                 </div>
               </section>
@@ -793,11 +793,11 @@ export default function App() {
           <Match when={stage() === "handoff"}>
             <section class="stage stage--center handoff party-handoff" data-testid="handoff-screen">
               <p class="mode-pill">{settings().controlMode === "auto" ? t("setup.modeAuto") : t("setup.modeManual")}</p>
-              <div class="handoff__icon" aria-hidden="true">🎤<span>→</span></div>
+              <div class="handoff__icon" aria-hidden="true">🎤<span>2</span></div>
               <h1>{t("handoff.inviteBack")}</h1>
               <p class="stage__hint">{t("handoff.description")}</p>
               <button class="button button--primary party-button" aria-keyshortcuts="Space" onClick={() => void runChallenge()}>
-                {t("handoff.start")} <span>→</span><kbd>{t("shortcut.primary")}</kbd>
+                {t("handoff.start")}<kbd>{t("shortcut.primary")}</kbd>
               </button>
             </section>
           </Match>
@@ -826,16 +826,18 @@ export default function App() {
                   when={challengeStatus() === "waiting" || challengeStatus() === "recording"}
                   fallback={
                     <div classList={{ "challenge-orb": true, [`challenge-orb--${challengeStatus()}`]: true }}>
-                      <Show when={challengeStatus() === "starting"}>{challengeCountdown() ?? 1}</Show>
-                      <Show when={challengeStatus() === "playing"}>◖</Show>
-                      <Show when={challengeStatus() === "between"}>{challengeCountdown() ?? 1}</Show>
-                      <Show when={challengeStatus() === "ready"}>
-                        {settings().controlMode === "auto" ? challengeCountdown() ?? 1 : "●"}
-                      </Show>
-                      <Show when={challengeStatus() === "saved"}>
-                        {settings().controlMode === "auto" && hasNextChallengeClip() ? challengeCountdown() ?? 1 : "✓"}
-                      </Show>
-                      <Show when={challengeStatus() === "missed"}>?</Show>
+                      <span class="challenge-orb__content">
+                        <Show when={challengeStatus() === "starting"}>{challengeCountdown() ?? 1}</Show>
+                        <Show when={challengeStatus() === "playing"}>▶</Show>
+                        <Show when={challengeStatus() === "between"}>{challengeCountdown() ?? 1}</Show>
+                        <Show when={challengeStatus() === "ready"}>
+                          {settings().controlMode === "auto" ? challengeCountdown() ?? 1 : "●"}
+                        </Show>
+                        <Show when={challengeStatus() === "saved"}>
+                          {settings().controlMode === "auto" && hasNextChallengeClip() ? challengeCountdown() ?? 1 : "✓"}
+                        </Show>
+                        <Show when={challengeStatus() === "missed"}>?</Show>
+                      </span>
                     </div>
                   }
                 >
@@ -922,7 +924,7 @@ export default function App() {
                   </button>
                   <Show when={settings().controlMode === "manual"}>
                     <button class="button button--primary party-button" aria-keyshortcuts="Space" onClick={() => requestSavedNext?.()}>
-                      {hasNextChallengeClip() ? t("challenge.next") : t("challenge.showResult")} →<kbd>{t("shortcut.primary")}</kbd>
+                      {hasNextChallengeClip() ? t("challenge.next") : t("challenge.showResult")}<kbd>{t("shortcut.primary")}</kbd>
                     </button>
                   </Show>
                 </Show>
@@ -939,9 +941,6 @@ export default function App() {
             <section class="stage stage--center reveal party-reveal" data-testid="reveal-screen">
               <div class="reveal-confetti" aria-hidden="true">
                 <For each={Array.from({ length: 16 })}>{() => <i />}</For>
-              </div>
-              <div class="reveal__progress" aria-hidden="true">
-                <For each={challengeClips()}>{() => <span />}</For>
               </div>
               <div class="reveal__visual" aria-hidden="true">
                 <div class="reveal-record reveal-record--back">Ж</div>

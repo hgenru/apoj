@@ -8,7 +8,7 @@
 4. The host can drag a bad boundary, then invites the second player back.
 5. For source chunks `[A][B][C]`, the app plays `reverse(C)`, `reverse(B)`, `reverse(A)`.
 6. Each fragment is played once or twice. After a cue, voice activity starts and silence stops the answer recording.
-7. The recorded answers are concatenated in challenge order and the whole result is reversed.
+7. The recorded answers are separated by a short breathing gap, concatenated in challenge order, and the whole result is reversed.
 8. The group compares the reconstructed song with the original.
 
 Auto and Manual are selected on the home screen. Auto mode only needs the initial “ready” button; voice detection runs the challenge after that and plays the reconstructed result after a short reveal. Manual mode keeps automatic playback repeats but requires explicit start, stop, and next-fragment actions for rooms where reliable detection is impossible. Space and common media keys trigger the primary action on each stage; R or Previous Track handles replay and retake actions.

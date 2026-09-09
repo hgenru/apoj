@@ -256,11 +256,6 @@ input:focus-visible {
   font-size: 1.3rem;
 }
 
-.button span {
-  margin-left: 13px;
-  font-size: 1.25em;
-}
-
 .main-content {
   display: flex;
   width: min(1680px, calc(100% - 80px));
@@ -761,14 +756,18 @@ h1 em {
 
 .stage-heading {
   display: flex;
-  align-items: end;
+  align-items: center;
   justify-content: space-between;
   gap: 28px;
 }
 
 .stage-heading > p {
-  margin: 0 0 8px;
-  color: var(--muted);
+  margin: 0;
+  padding: 12px 18px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  color: #d3d1df;
+  background: rgb(255 255 255 / 4%);
   white-space: nowrap;
 }
 
@@ -960,7 +959,7 @@ kbd {
 
 .party-stage__heading {
   display: flex;
-  align-items: end;
+  align-items: center;
   justify-content: space-between;
   gap: 60px;
 }
@@ -982,7 +981,7 @@ kbd {
 
 .party-stage .secret-tip {
   flex: 0 1 560px;
-  margin: 0 0 8px;
+  margin: 0;
   padding: 20px 25px;
   font-size: clamp(1.1rem, 1.5vw, 1.4rem);
 }
@@ -1044,16 +1043,16 @@ kbd {
 .source-dock__status {
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: 30px;
 }
 
-.source-dock__status > div {
+.source-dock__label {
   display: flex;
-  align-items: baseline;
-  gap: 24px;
+  align-items: center;
+  gap: 16px;
 }
 
-.source-dock__status span {
+.source-dock__label > span:last-child {
   color: var(--muted);
   font-size: 1.2rem;
   font-weight: 850;
@@ -1068,6 +1067,8 @@ kbd {
 }
 
 .source-dock__dot {
+  display: block;
+  flex: 0 0 24px;
   width: 24px;
   height: 24px;
   border-radius: 50%;
@@ -1206,6 +1207,24 @@ kbd {
   margin: 0;
   border-width: 3px;
   font-size: clamp(6rem, 10vh, 8.5rem);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.challenge-orb__content {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  line-height: 1;
+}
+
+.challenge-orb--playing .challenge-orb__content {
+  transform: translateX(0.06em);
+}
+
+.challenge-orb--saved .challenge-orb__content {
+  transform: translateY(-0.035em);
 }
 
 .challenge-live-wave {
@@ -1217,6 +1236,7 @@ kbd {
   display: grid;
   grid-template-rows: 34px minmax(92px, auto) 44px;
   align-items: center;
+  justify-items: center;
   text-align: center;
 }
 
@@ -1232,6 +1252,9 @@ kbd {
 }
 
 .challenge-screen__support {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   min-height: 44px;
   color: #c7c5d8;
   font-size: clamp(1.1rem, 1.5vw, 1.45rem);
@@ -1240,7 +1263,7 @@ kbd {
 
 .challenge-screen__controls {
   display: flex;
-  align-items: end;
+  align-items: center;
   justify-content: center;
   gap: 18px;
   min-height: 116px;
@@ -1521,7 +1544,6 @@ kbd {
 .challenge-orb--ready {
   color: var(--mint);
   background: rgb(82 214 197 / 7%);
-  transform: scale(0.94);
 }
 
 .challenge-orb--recording {
@@ -1533,7 +1555,6 @@ kbd {
 .challenge-orb--saved {
   color: var(--night);
   background: var(--mint);
-  transform: rotate(-5deg) scale(0.92);
 }
 
 .challenge-orb--missed {
@@ -1554,39 +1575,18 @@ kbd {
   display: grid;
   grid-template-columns: minmax(420px, 0.85fr) minmax(600px, 1.15fr);
   grid-template-areas:
-    "progress progress"
     "visual copy"
     "visual actions"
     "visual autoplay"
     "visual new";
-  grid-template-rows: 24px auto auto 28px 54px;
+  grid-template-rows: auto auto 28px 54px;
   align-content: center;
   align-items: center;
-  gap: 22px 80px;
+  gap: 20px 80px;
   min-height: calc(100dvh - 101px);
   padding: 42px 0 50px;
   text-align: left;
 }
-
-.reveal__progress {
-  grid-area: progress;
-  display: flex;
-  gap: 10px;
-  width: 100%;
-  height: 14px;
-}
-
-.reveal__progress span {
-  flex: 1;
-  border-radius: 999px;
-  background: var(--mint);
-  box-shadow: 0 0 18px rgb(82 214 197 / 18%);
-  animation: reveal-track 450ms ease-out backwards;
-}
-
-.reveal__progress span:nth-child(2n) { animation-delay: 70ms; }
-.reveal__progress span:nth-child(3n) { animation-delay: 140ms; }
-.reveal__progress span:nth-child(4n) { animation-delay: 210ms; }
 
 .reveal__visual {
   position: relative;
@@ -1975,10 +1975,6 @@ input[type="range"] {
   from { opacity: 0; scale: 0.55; }
 }
 
-@keyframes reveal-track {
-  from { opacity: 0; transform: scaleX(0); }
-}
-
 @keyframes confetti-fall {
   0% { opacity: 0; transform: translate3d(0, -5vh, 0) rotate(0deg); }
   8% { opacity: 1; }
@@ -2012,13 +2008,12 @@ input[type="range"] {
   .party-reveal {
     grid-template-columns: 1fr;
     grid-template-areas:
-      "progress"
       "visual"
       "copy"
       "actions"
       "autoplay"
       "new";
-    grid-template-rows: 14px 310px auto auto 28px 54px;
+    grid-template-rows: 310px auto auto 28px 54px;
     gap: 24px;
     height: auto;
     min-height: calc(100vh - 75px);

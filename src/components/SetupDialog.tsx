@@ -128,7 +128,7 @@ export const SetupDialog: Component<SetupDialogProps> = (props) => {
                 {props.busy ? t("setup.connecting") : t("setup.reconnect")}
               </button>
               <button class="button button--primary" type="button" onClick={props.onDone}>
-                {props.purpose === "round" ? t("setup.startRound") : t("common.done")} <span>→</span>
+                {props.purpose === "round" ? t("setup.startRound") : t("common.done")}
               </button>
             </Show>
           </div>

@@ -228,8 +228,19 @@ export function concatenate(clips: AudioClip[]): AudioClip {
   return { samples, sampleRate };
 }
 
-export function assembleReveal(attemptsInChallengeOrder: AudioClip[]): AudioClip {
-  return reverseClip(concatenate(attemptsInChallengeOrder));
+export function assembleReveal(attemptsInChallengeOrder: AudioClip[], gapMs = 180): AudioClip {
+  if (attemptsInChallengeOrder.length < 2 || gapMs <= 0) {
+    return reverseClip(concatenate(attemptsInChallengeOrder));
+  }
+  const sampleRate = attemptsInChallengeOrder[0].sampleRate;
+  const gap = (): AudioClip => ({
+    samples: new Float32Array(Math.round((gapMs / 1_000) * sampleRate)),
+    sampleRate,
+  });
+  const separated = attemptsInChallengeOrder.flatMap((clip, index) =>
+    index + 1 < attemptsInChallengeOrder.length ? [clip, gap()] : [clip],
+  );
+  return reverseClip(concatenate(separated));
 }
 
 export function dbToAmplitude(db: number): number {

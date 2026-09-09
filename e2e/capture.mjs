@@ -33,6 +33,7 @@ await page.getByRole("button", { name: /^Начать/ }).click();
 await page.getByRole("button", { name: /Начать запись/ }).waitFor();
 await page.screenshot({ path: "test-results/manual-ready-review.png", fullPage: true });
 await page.getByRole("button", { name: /Начать запись/ }).click();
+await page.waitForTimeout(150);
 await page.screenshot({ path: "test-results/manual-recording-review.png", fullPage: true });
 await page.getByRole("button", { name: /Остановить запись/ }).click();
 await page.getByRole("button", { name: /Следующий кусочек|Показать результат/ }).waitFor();

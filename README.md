@@ -23,7 +23,7 @@ No server, account, or internet connection is required after the app has been lo
 4. Check the waveform. Drag a divider if it cuts through a word, then invite player two back.
 5. Player two hears each reversed chunk twice, with a two-second visible countdown between repeats.
 6. After a short preparation countdown and a beep, player two imitates the sound. In Auto mode, recording starts on their voice and stops on silence.
-7. APOZH joins all imitations, reverses the complete recording, and plays the result. In Auto mode, the result starts automatically after a short reveal.
+7. APOZH joins the imitations with a tiny breathing gap, reverses the complete recording, and plays the result. In Auto mode, the result starts automatically after a short reveal pause.
 
 During the challenge, **Listen again** replays the current chunk. **Discard and try again** throws away the current take, while **Record again** replaces a take that has just finished.
 

@@ -66,4 +66,13 @@ describe("smart audio preparation", () => {
     const reveal = assembleReveal(challenge);
     expect(Array.from(reveal.samples)).toEqual([1, 2, 3, 4, 5, 6]);
   });
+
+  it("keeps a short pause between reconstructed answers", () => {
+    const attempts: AudioClip[] = [
+      { samples: Float32Array.from([3, 4]), sampleRate: 1_000 },
+      { samples: Float32Array.from([1, 2]), sampleRate: 1_000 },
+    ];
+    const reveal = assembleReveal(attempts, 2);
+    expect(Array.from(reveal.samples)).toEqual([2, 1, 0, 0, 4, 3]);
+  });
 });
