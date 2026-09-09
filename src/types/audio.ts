@@ -4,9 +4,11 @@ export interface AudioClip {
 }
 
 export type ChannelMode = "mix" | "left" | "right";
+export type ControlMode = "auto" | "manual";
 
 export interface GameSettings {
   channelMode: ChannelMode;
+  controlMode: ControlMode;
   targetChunkSeconds: number;
   repeats: 1 | 2;
   voiceThresholdDb: number;

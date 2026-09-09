@@ -124,8 +124,8 @@ export const WaveformEditor: Component<WaveformEditorProps> = (props) => {
           <strong>{formatSeconds((chunks()[selected()]?.end - chunks()[selected()]?.start) / props.clip.sampleRate)}</strong>
         </div>
         <div class="waveform-actions">
-          <button class="button button--small button--ghost" onClick={() => playSelected(false)}>▶ {t("editor.playNormal")}</button>
-          <button class="button button--small button--secondary" onClick={() => playSelected(true)}>↶ {t("editor.playReverse")}</button>
+          <button class="button button--ghost waveform-button" onClick={() => playSelected(false)}>▶ {t("editor.playNormal")}</button>
+          <button class="button button--secondary waveform-button" onClick={() => playSelected(true)}>↶ {t("editor.playReverse")}</button>
         </div>
       </div>
     </div>

@@ -50,11 +50,39 @@ test("separates repeats and offers another listen", async ({ page }) => {
   await expect(page.getByRole("heading", { name: /Приготовься слушать/ })).toBeVisible();
   await expect(page.getByRole("heading", { name: /Слушай · 1\/2/ })).toBeVisible();
   await expect(page.getByRole("heading", { name: /тот же кусок/ })).toBeVisible({ timeout: 8_000 });
+  const commandTopDuringPause = (await page.locator(".challenge-screen__command").boundingBox())?.y;
   await page.waitForTimeout(1_200);
   await expect(page.getByRole("heading", { name: /тот же кусок/ })).toBeVisible();
   await expect(page.getByRole("heading", { name: /Слушай · 2\/2/ })).toBeVisible({ timeout: 8_000 });
-  await page.getByRole("button", { name: /Послушать ещё раз/ }).click();
+  const listenAgain = page.getByRole("button", { name: /Послушать ещё раз/ });
+  await expect(listenAgain).toBeVisible();
+  const commandTopBeforeSinging = (await page.locator(".challenge-screen__command").boundingBox())?.y;
+  expect(commandTopDuringPause).toBeDefined();
+  expect(commandTopBeforeSinging).toBeCloseTo(commandTopDuringPause!, 0);
+  await listenAgain.click();
   await expect(page.getByRole("heading", { name: /Слушай ещё раз/ })).toBeVisible();
+});
+
+test("manual mode waits for explicit recording and next-fragment controls", async ({ page }) => {
+  test.setTimeout(35_000);
+  await page.goto("/");
+  await page.getByRole("button", { name: "RU" }).click();
+  await page.getByRole("button", { name: /Настройки/ }).click();
+  await page.getByRole("button", { name: /Вручную/ }).click();
+  await page.getByRole("button", { name: "Закрыть", exact: true }).first().click();
+  await page.getByRole("button", { name: "Демо без микрофона" }).click();
+  await page.getByRole("button", { name: /Разрезы хорошие/ }).click();
+  await page.getByRole("button", { name: /^Начать/ }).click();
+
+  await expect(page.getByRole("heading", { name: /Готов петь/ })).toBeVisible({ timeout: 12_000 });
+  await page.getByRole("button", { name: /Начать запись/ }).click();
+  await expect(page.getByRole("heading", { name: /идёт запись/ })).toBeVisible();
+  await page.getByRole("button", { name: /Остановить запись/ }).click();
+  await expect(page.getByRole("heading", { name: /Записано/ })).toBeVisible();
+  await page.waitForTimeout(3_500);
+  await expect(page.getByRole("heading", { name: /Записано/ })).toBeVisible();
+  await page.getByRole("button", { name: /Следующий кусочек/ }).click();
+  await expect(page.getByRole("heading", { name: /Слушай · 1\/2/ })).toBeVisible();
 });
 
 test("has a valid installable web app manifest", async ({ page, context }) => {

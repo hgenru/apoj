@@ -11,7 +11,7 @@ import {
   sliceClip,
   trimSilence,
 } from "./audio/dsp";
-import { LevelMeter } from "./components/LevelMeter";
+import { LiveWaveform } from "./components/LiveWaveform";
 import { SetupDialog } from "./components/SetupDialog";
 import { WaveformEditor } from "./components/WaveformEditor";
 import { locale, setLocale, t } from "./i18n";
@@ -32,6 +32,7 @@ interface BeforeInstallPromptEvent extends Event {
 
 const DEFAULT_SETTINGS: GameSettings = {
   channelMode: "mix",
+  controlMode: "auto",
   targetChunkSeconds: 2.1,
   repeats: 2,
   voiceThresholdDb: -42,
@@ -39,10 +40,10 @@ const DEFAULT_SETTINGS: GameSettings = {
 };
 
 const PARTY_TIMING = {
-  firstListenLeadInMs: 2_000,
+  firstListenLeadInMs: 1_500,
   betweenRepeatsMs: 2_000,
-  beforeRecordingMs: 5_000,
-  afterSavedMs: 3_500,
+  beforeRecordingMs: 2_400,
+  afterSavedMs: 3_000,
 } as const;
 
 function readSettings(): GameSettings {
@@ -82,6 +83,7 @@ export default function App() {
   const [settings, setSettings] = createSignal<GameSettings>(readSettings());
   const [error, setError] = createSignal("");
   const [level, setLevel] = createSignal(0);
+  const [liveWaveform, setLiveWaveform] = createSignal<number[]>([]);
   const [sourceRecording, setSourceRecording] = createSignal(false);
   const [recordSeconds, setRecordSeconds] = createSignal(0);
   const [sourceClip, setSourceClip] = createSignal<AudioClip>();
@@ -104,7 +106,9 @@ export default function App() {
   let stopCurrentAttempt: (() => void) | undefined;
   let startCurrentAttempt: (() => void) | undefined;
   let requestReplay: (() => void) | undefined;
+  let requestManualRecord: (() => void) | undefined;
   let requestSavedRedo: (() => void) | undefined;
+  let requestSavedNext: (() => void) | undefined;
   let requestMissedRetry: (() => void) | undefined;
 
   const challengeClips = createMemo(() => {
@@ -127,7 +131,13 @@ export default function App() {
       setLevel(0);
       return;
     }
-    const timer = window.setInterval(() => setLevel(engine.getLevel()), 45);
+    const timer = window.setInterval(() => {
+      const currentLevel = engine.getLevel();
+      setLevel(currentLevel);
+      if (sourceRecording() || challengeStatus() === "waiting" || challengeStatus() === "recording") {
+        setLiveWaveform((current) => [...current.slice(-1_799), currentLevel]);
+      }
+    }, 45);
     onCleanup(() => window.clearInterval(timer));
   });
 
@@ -205,6 +215,7 @@ export default function App() {
   const startSourceRecording = () => {
     setError("");
     try {
+      setLiveWaveform([]);
       engine.startRecording();
       setSourceRecording(true);
       const startedAt = performance.now();
@@ -252,12 +263,13 @@ export default function App() {
     setChallengeCountdown(undefined);
   };
 
-  const captureAttempt = async (
+  const captureAutomaticAttempt = async (
     token: number,
     expectedClip: AudioClip,
     ambientLevels: number[],
   ): Promise<CapturedAttempt | undefined> => {
     if (demoMode()) {
+      setLiveWaveform([]);
       setChallengeStatus("waiting");
       await delay(220);
       setChallengeStatus("recording");
@@ -265,6 +277,7 @@ export default function App() {
       return { clip: expectedClip, voiceDetected: true };
     }
 
+    setLiveWaveform([]);
     engine.startRecording();
     setChallengeStatus("waiting");
     const gate = makeAdaptiveVoiceGate(settings().voiceThresholdDb, ambientLevels);
@@ -316,6 +329,27 @@ export default function App() {
     };
   };
 
+  const captureManualAttempt = async (token: number, expectedClip: AudioClip): Promise<CapturedAttempt | undefined> => {
+    setLiveWaveform([]);
+    if (!demoMode()) engine.startRecording();
+    setChallengeStatus("recording");
+
+    await new Promise<void>((resolve) => {
+      let finished = false;
+      stopCurrentAttempt = () => {
+        if (finished) return;
+        finished = true;
+        stopCurrentAttempt = undefined;
+        resolve();
+      };
+    });
+
+    if (demoMode()) return { clip: expectedClip, voiceDetected: true };
+    const recorded = await engine.stopRecording();
+    if (token !== challengeRun) return undefined;
+    return { clip: trimSilence(recorded), voiceDetected: true };
+  };
+
   const waitForReplayChoice = (token: number) => new Promise<{ replay: boolean; ambientLevels: number[] }>((resolve) => {
     let settled = false;
     let timer: number | undefined;
@@ -340,9 +374,23 @@ export default function App() {
     timer = window.setTimeout(() => finish(false), PARTY_TIMING.beforeRecordingMs);
   });
 
+  const waitForManualReadyChoice = (token: number) => new Promise<"replay" | "record" | "cancel">((resolve) => {
+    let settled = false;
+    const finish = (choice: "replay" | "record") => {
+      if (settled) return;
+      settled = true;
+      requestReplay = undefined;
+      requestManualRecord = undefined;
+      resolve(token === challengeRun ? choice : "cancel");
+    };
+    requestReplay = () => finish("replay");
+    requestManualRecord = () => finish("record");
+  });
+
   const waitForSavedChoice = (token: number) => new Promise<boolean>((resolve) => {
     let settled = false;
     let timer: number | undefined;
+    let interval: number | undefined;
     const deadline = performance.now() + PARTY_TIMING.afterSavedMs;
     const update = () => setChallengeCountdown(Math.max(1, Math.ceil((deadline - performance.now()) / 1_000)));
     const finish = (redo: boolean) => {
@@ -351,12 +399,15 @@ export default function App() {
       window.clearTimeout(timer);
       window.clearInterval(interval);
       requestSavedRedo = undefined;
+      requestSavedNext = undefined;
       setChallengeCountdown(undefined);
       resolve(redo && token === challengeRun);
     };
     requestSavedRedo = () => finish(true);
+    requestSavedNext = () => finish(false);
+    if (settings().controlMode === "manual") return;
     update();
-    const interval = window.setInterval(update, 100);
+    interval = window.setInterval(update, 100);
     timer = window.setTimeout(() => finish(false), PARTY_TIMING.afterSavedMs);
   });
 
@@ -396,10 +447,16 @@ export default function App() {
         let ambientLevels: number[] = [];
         while (token === challengeRun) {
           setChallengeStatus("ready");
-          const choice = await waitForReplayChoice(token);
-          if (!choice.replay) {
-            ambientLevels = choice.ambientLevels;
-            break;
+          if (settings().controlMode === "auto") {
+            const choice = await waitForReplayChoice(token);
+            if (!choice.replay) {
+              ambientLevels = choice.ambientLevels;
+              break;
+            }
+          } else {
+            const choice = await waitForManualReadyChoice(token);
+            if (choice === "cancel") return;
+            if (choice === "record") break;
           }
           setExtraListen(true);
           setChallengeStatus("playing");
@@ -408,7 +465,9 @@ export default function App() {
         }
         if (token !== challengeRun) return;
         if (!demoMode()) await engine.beep(820, 110);
-        const captured = await captureAttempt(token, clip, ambientLevels);
+        const captured = settings().controlMode === "auto"
+          ? await captureAutomaticAttempt(token, clip, ambientLevels)
+          : await captureManualAttempt(token, clip);
         if (!captured || token !== challengeRun) return;
         if (redoRequested()) {
           setAttempts((current) => current.slice(0, index));
@@ -447,7 +506,9 @@ export default function App() {
     stopCurrentAttempt?.();
     startCurrentAttempt = undefined;
     requestReplay?.();
+    requestManualRecord?.();
     requestSavedRedo?.();
+    requestSavedNext?.();
     requestMissedRetry?.();
     engine.stopPlayback();
     if (sourceRecording()) {
@@ -494,6 +555,11 @@ export default function App() {
             </button>
           </div>
         </Show>
+        <Show when={stage() === "challenge"}>
+          <button class="button button--ghost topbar__round-exit" type="button" onClick={() => void cancelRound()}>
+            {t("challenge.cancel")}
+          </button>
+        </Show>
       </header>
 
       <main class="main-content">
@@ -508,8 +574,8 @@ export default function App() {
                   {micReady() ? t("home.soundReady") : t("home.soundMissing")}
                 </div>
                 <div class="lobby__actions">
-                  <button class="button button--primary button--large" onClick={beginRound}>{t("home.start")} <span>→</span></button>
-                  <button class="button button--ghost" onClick={loadDemo}>{t("home.demo")}</button>
+                  <button class="button button--primary party-button" onClick={beginRound}>{t("home.start")} <span>→</span></button>
+                  <button class="button button--ghost party-button" onClick={loadDemo}>{t("home.demo")}</button>
                 </div>
                 <Show when={installPrompt() && !installed()}>
                   <button class="install-button" type="button" onClick={() => void installApp()}>↓ {t("app.install")}</button>
@@ -524,29 +590,40 @@ export default function App() {
           </Match>
 
           <Match when={stage() === "source"}>
-            <section class="stage stage--center" data-testid="source-screen">
-              <h1>{t("record.title")}</h1>
-              <aside class="secret-tip">🙉 {t("record.secretTip")}</aside>
-              <div classList={{ recorder: true, "recorder--active": sourceRecording() }}>
-                <div class="recorder__pulse" />
+            <section class="party-stage source-stage" data-testid="source-screen">
+              <div class="party-stage__heading">
+                <div>
+                  <p class="party-stage__kicker">{t("record.playerOne")}</p>
+                  <h1>{t("record.title")}</h1>
+                </div>
+                <aside class="secret-tip">🙉 {t("record.secretTip")}</aside>
+              </div>
+              <div class="source-wave-panel">
+                <LiveWaveform values={liveWaveform()} active={sourceRecording()} />
+              </div>
+              <div class="source-dock">
+                <div class="source-dock__status">
+                  <span classList={{ "source-dock__dot": true, "source-dock__dot--active": sourceRecording() }} />
+                  <div>
+                    <span>{sourceRecording() ? t("record.listening") : t("record.ready")}</span>
+                    <strong>{formatClock(recordSeconds())}</strong>
+                  </div>
+                </div>
                 <button
-                  class="record-button"
+                  classList={{ "button": true, "button--primary": !sourceRecording(), "button--secondary": sourceRecording(), "party-button": true }}
                   aria-label={sourceRecording() ? t("record.stop") : t("record.start")}
                   onClick={() => sourceRecording() ? void stopSourceRecording() : startSourceRecording()}
                 >
-                  <span />
+                  {sourceRecording() ? `■ ${t("record.stop")}` : `● ${t("record.start")}`}
                 </button>
               </div>
-              <strong class="record-time">{formatClock(recordSeconds())}</strong>
-              <p class="record-status">{sourceRecording() ? t("record.listening") : t("record.start")}</p>
-              <div class="record-meter"><LevelMeter level={level()} /></div>
               <Show when={error()}><p class="error-message">{error()}</p></Show>
             </section>
           </Match>
 
           <Match when={stage() === "edit" && sourceClip()}>
             {(clip) => (
-              <section class="stage stage--wide" data-testid="edit-screen">
+              <section class="stage stage--wide edit-stage" data-testid="edit-screen">
                 <div class="stage-heading">
                   <div>
                     <h1>{t("edit.title")}</h1>
@@ -559,83 +636,116 @@ export default function App() {
                 <p class="stage__hint stage__hint--left">{t("edit.hint")}</p>
                 <WaveformEditor clip={clip()} boundaries={boundaries()} onChange={setBoundaries} onPlay={playEditorChunk} />
                 <div class="stage-actions stage-actions--end">
-                  <button class="button button--ghost" onClick={splitAgain}>↻ {t("edit.auto")}</button>
-                  <button class="button button--primary" onClick={() => setStage("handoff")}>{t("edit.accept")} <span>→</span></button>
+                  <button class="button button--ghost party-button" onClick={splitAgain}>↻ {t("edit.auto")}</button>
+                  <button class="button button--primary party-button" onClick={() => setStage("handoff")}>{t("edit.accept")} <span>→</span></button>
                 </div>
               </section>
             )}
           </Match>
 
           <Match when={stage() === "handoff"}>
-            <section class="stage stage--center handoff" data-testid="handoff-screen">
+            <section class="stage stage--center handoff party-handoff" data-testid="handoff-screen">
+              <p class="mode-pill">{settings().controlMode === "auto" ? t("setup.modeAuto") : t("setup.modeManual")}</p>
               <div class="handoff__icon" aria-hidden="true">🎤<span>→</span></div>
               <h1>{t("handoff.inviteBack")}</h1>
               <p class="stage__hint">{t("handoff.description")}</p>
-              <button class="button button--primary button--large" onClick={() => void runChallenge()}>{t("handoff.start")} <span>→</span></button>
+              <button class="button button--primary party-button" onClick={() => void runChallenge()}>{t("handoff.start")} <span>→</span></button>
             </section>
           </Match>
 
           <Match when={stage() === "challenge"}>
-            <section class="stage stage--center challenge" data-testid="challenge-screen">
-              <p class="challenge__progress">{t("challenge.progress", { current: challengeIndex() + 1, total: challengeClips().length })}</p>
-              <Show when={["playing", "between", "ready"].includes(challengeStatus())}>
-                <div class="repeat-progress" aria-label={t("setup.repeats")}>
-                  <For each={Array.from({ length: settings().repeats })}>
-                    {(_, index) => <span classList={{ active: challengeRepeat() >= index() + 1 }}>{index() + 1}</span>}
+            <section class="challenge-screen" data-testid="challenge-screen">
+              <div class="challenge-scoreboard">
+                <div class="challenge-scoreboard__count">
+                  <span>{t("challenge.fragment")}</span>
+                  <strong>{challengeIndex() + 1} / {challengeClips().length}</strong>
+                </div>
+                <div class="challenge-scoreboard__track" role="progressbar" aria-valuemin="1" aria-valuemax={challengeClips().length} aria-valuenow={challengeIndex() + 1}>
+                  <For each={challengeClips()}>
+                    {(_, index) => (
+                      <span classList={{ complete: index() < challengeIndex(), current: index() === challengeIndex() }} />
+                    )}
                   </For>
                 </div>
-              </Show>
-              <div classList={{ "challenge-orb": true, [`challenge-orb--${challengeStatus()}`]: true }}>
-                <Show when={challengeStatus() === "starting"}>{challengeCountdown() ?? 1}</Show>
-                <Show when={challengeStatus() === "playing"}>◖</Show>
-                <Show when={challengeStatus() === "between"}>{challengeCountdown() ?? 1}</Show>
-                <Show when={challengeStatus() === "ready"}>{challengeCountdown() ?? 1}</Show>
-                <Show when={challengeStatus() === "waiting"}>…</Show>
-                <Show when={challengeStatus() === "recording"}>●</Show>
-                <Show when={challengeStatus() === "saved"}>✓</Show>
-                <Show when={challengeStatus() === "missed"}>?</Show>
+                <div class="mode-pill mode-pill--score">
+                  {settings().controlMode === "auto" ? t("setup.modeAuto") : t("setup.modeManual")}
+                </div>
               </div>
-              <h1 aria-live="polite">
-                <Switch>
-                  <Match when={challengeStatus() === "starting"}>{t("challenge.getReadyListen")}</Match>
-                  <Match when={challengeStatus() === "playing"}>
-                    {extraListen()
-                      ? t("challenge.listenExtra")
-                      : t("challenge.listenRepeat", { current: challengeRepeat(), total: settings().repeats })}
-                  </Match>
-                  <Match when={challengeStatus() === "between"}>{t("challenge.betweenRepeats")}</Match>
-                  <Match when={challengeStatus() === "ready"}>{t("challenge.repeatSoon")}</Match>
-                  <Match when={challengeStatus() === "waiting"}>{t("challenge.waitVoice")}</Match>
-                  <Match when={challengeStatus() === "recording"}>{t("challenge.recording")}</Match>
-                  <Match when={challengeStatus() === "saved"}>{t("challenge.saved")}</Match>
-                  <Match when={challengeStatus() === "missed"}>{t("challenge.missed")}</Match>
-                </Switch>
-              </h1>
-              <Show when={challengeStatus() === "ready"}>
-                <p class="challenge__timing">{t("challenge.autoStarts")}</p>
-              </Show>
-              <Show when={challengeStatus() === "waiting"}>
-                <p class="challenge__timing">{t("challenge.autoListening")}</p>
-              </Show>
-              <Show when={challengeStatus() === "saved" && challengeCountdown()}>
-                <p class="challenge__timing">{t("challenge.nextSoon", { seconds: challengeCountdown()! })}</p>
-              </Show>
-              <Show when={challengeStatus() === "waiting" || challengeStatus() === "recording"}>
-                <div class="record-meter"><LevelMeter level={level()} /></div>
-              </Show>
-              <div class="stage-actions">
+
+              <div class="challenge-screen__visual">
+                <Show
+                  when={challengeStatus() === "waiting" || challengeStatus() === "recording"}
+                  fallback={
+                    <div classList={{ "challenge-orb": true, [`challenge-orb--${challengeStatus()}`]: true }}>
+                      <Show when={challengeStatus() === "starting"}>{challengeCountdown() ?? 1}</Show>
+                      <Show when={challengeStatus() === "playing"}>◖</Show>
+                      <Show when={challengeStatus() === "between"}>{challengeCountdown() ?? 1}</Show>
+                      <Show when={challengeStatus() === "ready"}>
+                        {settings().controlMode === "auto" ? challengeCountdown() ?? 1 : "●"}
+                      </Show>
+                      <Show when={challengeStatus() === "saved"}>✓</Show>
+                      <Show when={challengeStatus() === "missed"}>?</Show>
+                    </div>
+                  }
+                >
+                  <div class="challenge-live-wave">
+                    <LiveWaveform values={liveWaveform()} active={challengeStatus() === "recording"} tone="mint" />
+                  </div>
+                </Show>
+              </div>
+
+              <div class="challenge-screen__command" aria-live="polite">
+                <p class="challenge-screen__phase">
+                  <Switch>
+                    <Match when={["starting", "playing", "between"].includes(challengeStatus())}>{t("challenge.phaseListen")}</Match>
+                    <Match when={challengeStatus() === "ready"}>{t("challenge.phaseReady")}</Match>
+                    <Match when={challengeStatus() === "waiting" || challengeStatus() === "recording"}>{t("challenge.phaseSing")}</Match>
+                    <Match when={challengeStatus() === "saved"}>{t("challenge.phaseSaved")}</Match>
+                    <Match when={challengeStatus() === "missed"}>{t("challenge.phaseRetry")}</Match>
+                  </Switch>
+                </p>
+                <h1>
+                  <Switch>
+                    <Match when={challengeStatus() === "starting"}>{t("challenge.getReadyListen")}</Match>
+                    <Match when={challengeStatus() === "playing"}>
+                      {extraListen()
+                        ? t("challenge.listenExtra")
+                        : t("challenge.listenRepeat", { current: challengeRepeat(), total: settings().repeats })}
+                    </Match>
+                    <Match when={challengeStatus() === "between"}>{t("challenge.betweenRepeats")}</Match>
+                    <Match when={challengeStatus() === "ready"}>
+                      {settings().controlMode === "auto" ? t("challenge.repeatSoon") : t("challenge.manualReady")}
+                    </Match>
+                    <Match when={challengeStatus() === "waiting"}>{t("challenge.waitVoice")}</Match>
+                    <Match when={challengeStatus() === "recording"}>{t("challenge.recording")}</Match>
+                    <Match when={challengeStatus() === "saved"}>{t("challenge.saved")}</Match>
+                    <Match when={challengeStatus() === "missed"}>{t("challenge.missed")}</Match>
+                  </Switch>
+                </h1>
+                <div class="challenge-screen__support">
+                  <Show when={challengeStatus() === "ready" && settings().controlMode === "auto"}>{t("challenge.autoStarts")}</Show>
+                  <Show when={challengeStatus() === "waiting"}>{t("challenge.autoListening")}</Show>
+                  <Show when={challengeStatus() === "saved" && settings().controlMode === "auto" && challengeCountdown()}>
+                    {t("challenge.nextSoon", { seconds: challengeCountdown()! })}
+                  </Show>
+                  <Show when={challengeStatus() === "saved" && settings().controlMode === "manual"}>{t("challenge.manualSaved")}</Show>
+                </div>
+              </div>
+
+              <div class="challenge-screen__controls">
                 <Show when={challengeStatus() === "ready"}>
-                  <button class="button button--secondary" onClick={() => requestReplay?.()}>↶ {t("challenge.listenAgain")}</button>
+                  <button class="button button--secondary party-button" onClick={() => requestReplay?.()}>↶ {t("challenge.listenAgain")}</button>
+                  <Show when={settings().controlMode === "manual"}>
+                    <button class="button button--primary party-button" onClick={() => requestManualRecord?.()}>● {t("challenge.startRecording")}</button>
+                  </Show>
                 </Show>
                 <Show when={challengeStatus() === "waiting"}>
-                  <button class="button button--secondary" onClick={() => startCurrentAttempt?.()}>{t("challenge.startManual")}</button>
+                  <button class="button button--secondary party-button" onClick={() => startCurrentAttempt?.()}>{t("challenge.startManual")}</button>
                 </Show>
                 <Show when={challengeStatus() === "recording"}>
-                  <button class="button button--secondary" onClick={() => stopCurrentAttempt?.()}>{t("challenge.stop")}</button>
-                </Show>
-                <Show when={challengeStatus() === "waiting" || challengeStatus() === "recording"}>
+                  <button class="button button--secondary party-button" onClick={() => stopCurrentAttempt?.()}>■ {t("challenge.stop")}</button>
                   <button
-                    class="button button--ghost"
+                    class="button button--ghost party-button"
                     onClick={() => {
                       setRedoRequested(true);
                       stopCurrentAttempt?.();
@@ -645,12 +755,14 @@ export default function App() {
                   </button>
                 </Show>
                 <Show when={challengeStatus() === "saved"}>
-                  <button class="button button--secondary" onClick={() => requestSavedRedo?.()}>↶ {t("challenge.redo")}</button>
+                  <button class="button button--secondary party-button" onClick={() => requestSavedRedo?.()}>↶ {t("challenge.redo")}</button>
+                  <Show when={settings().controlMode === "manual"}>
+                    <button class="button button--primary party-button" onClick={() => requestSavedNext?.()}>{t("challenge.next")} →</button>
+                  </Show>
                 </Show>
                 <Show when={challengeStatus() === "missed"}>
-                  <button class="button button--primary" onClick={() => requestMissedRetry?.()}>↻ {t("challenge.tryAgain")}</button>
+                  <button class="button button--primary party-button" onClick={() => requestMissedRetry?.()}>↻ {t("challenge.tryAgain")}</button>
                 </Show>
-                <button class="button button--quiet" onClick={() => void cancelRound()}>{t("challenge.cancel")}</button>
               </div>
             </section>
           </Match>

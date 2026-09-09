@@ -11,7 +11,7 @@
 7. The recorded answers are concatenated in challenge order and the whole result is reversed.
 8. The group compares the reconstructed song with the original.
 
-The only routine interaction during the challenge is the initial “ready” button. Manual stop and redo remain available because party noise is unpredictable.
+Auto mode only needs the initial “ready” button; voice detection runs the challenge after that. Manual mode keeps automatic playback repeats but requires explicit start, stop, and next-fragment actions for rooms where reliable detection is impossible.
 
 ## Stack
 
@@ -48,7 +48,7 @@ Current defaults:
 
 - Browser echo cancellation, noise suppression, and automatic gain control are disabled so a USB mixer signal is not altered.
 - Stereo input can be mixed to mono or restricted to the left or right channel.
-- The five-second pre-roll doubles as room-noise calibration before every answer.
+- The 2.4-second pre-roll doubles as room-noise calibration before every automatic answer.
 - The start and stop gates adapt above the median room level while respecting the configured minimum threshold.
 - Five consecutive 50 ms frames above the adaptive start gate mark voice onset, filtering out brief knocks and shuffles.
 - After onset, 950 ms of silence stops recording; a lower stop gate adds hysteresis.

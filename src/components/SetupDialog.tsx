@@ -37,6 +37,28 @@ export const SetupDialog: Component<SetupDialogProps> = (props) => {
           </div>
 
           <div class="settings-grid">
+            <div class="field field--wide">
+              <span>{t("setup.controlMode")}</span>
+              <div class="segmented segmented--mode" role="group" aria-label={t("setup.controlMode")}>
+                <button
+                  type="button"
+                  classList={{ active: props.settings.controlMode === "auto" }}
+                  onClick={() => patchSettings({ controlMode: "auto" })}
+                >
+                  <strong>{t("setup.modeAuto")}</strong>
+                  <small>{t("setup.modeAutoHint")}</small>
+                </button>
+                <button
+                  type="button"
+                  classList={{ active: props.settings.controlMode === "manual" }}
+                  onClick={() => patchSettings({ controlMode: "manual" })}
+                >
+                  <strong>{t("setup.modeManual")}</strong>
+                  <small>{t("setup.modeManualHint")}</small>
+                </button>
+              </div>
+            </div>
+
             <label class="field field--wide">
               <span>{t("setup.input")}</span>
               <select value={props.selectedDevice} onChange={(event) => props.onDeviceChange(event.currentTarget.value)}>

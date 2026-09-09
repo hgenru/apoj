@@ -22,10 +22,12 @@ No server, account, or internet connection is required after the app has been lo
 3. APOZH trims the recording and proposes chunk boundaries near quiet parts of the performance.
 4. Check the waveform. Drag a divider if it cuts through a word, then invite player two back.
 5. Player two hears each reversed chunk twice, with a two-second visible countdown between repeats.
-6. After a five-second preparation countdown and a beep, player two imitates the sound. Recording starts on their voice and stops on silence.
+6. After a short preparation countdown and a beep, player two imitates the sound. In Auto mode, recording starts on their voice and stops on silence.
 7. APOZH joins all imitations, reverses the complete recording, and plays the result.
 
-During the challenge, **Listen again** replays the current chunk. **Discard and try again** throws away the current take, while **Record again** replaces a take that has just finished. A manual start remains available if automatic voice detection cannot distinguish the singer from a noisy room.
+During the challenge, **Listen again** replays the current chunk. **Discard and try again** throws away the current take, while **Record again** replaces a take that has just finished.
+
+Choose **Auto** for a hands-free round driven by voice detection. Choose **Manual** for a noisy room: playback repeats still run automatically, while large on-screen controls start and stop recording and advance to the next fragment.
 
 ## Install the PWA and play offline
 
@@ -45,7 +47,7 @@ Open **Setup** before the party and select the desired audio input. Stereo USB d
 
 Browser echo cancellation, noise suppression, and automatic gain control are disabled to preserve the signal from an external mixer. Playback uses the operating system's selected output device.
 
-Before every answer, APOZH measures the current room level and raises its voice gate above that baseline. Brief bumps are ignored, and an answer is only started by a sustained signal. For the most reliable automatic stopping, still route only the active vocal microphone into the USB recording bus: music and unused microphones can keep the level above the silence threshold. The minimum voice level and target chunk duration can be adjusted in Setup.
+Before every automatic answer, APOZH measures the current room level and raises its voice gate above that baseline. Brief bumps are ignored, and an answer is only started by a sustained signal. For the most reliable automatic stopping, still route only the active vocal microphone into the USB recording bus: music and unused microphones can keep the level above the silence threshold. The control mode, minimum voice level, and target chunk duration can be adjusted in Setup.
 
 ## Audio and privacy
 

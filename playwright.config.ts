@@ -33,10 +33,10 @@ export default defineConfig({
       },
     },
     {
-      name: "party-projector",
+      name: "party-tv-1080p",
       use: {
-        ...devices["Desktop Chrome HiDPI"],
-        viewport: { width: 1440, height: 900 },
+        ...devices["Desktop Chrome"],
+        viewport: { width: 1920, height: 1080 },
         launchOptions: {
           executablePath: localChrome,
           args: [
