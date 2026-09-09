@@ -47,6 +47,8 @@ npm run test:e2e
 
 ## Cloudflare Pages
 
+Целевой адрес проекта: `https://apoj.saa.sh`.
+
 При подключении GitHub-репозитория выбрать:
 
 - production branch: `main`;
@@ -55,3 +57,5 @@ npm run test:e2e
 - root directory: оставить пустым.
 
 Версия Node зафиксирована в `.node-version`, а `wrangler.jsonc` указывает Pages каталог `dist`. Переменные окружения и сервер не нужны. На выданном HTTPS-домене доступ к микрофону работает как в безопасном контексте.
+
+После первого успешного деплоя добавить `apoj.saa.sh` в **Custom domains** проекта Pages. Отдельный файл `CNAME` в репозитории не нужен.
