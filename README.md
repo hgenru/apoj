@@ -1,61 +1,99 @@
-# АПОЖ
+# APOZH
 
-Локальная PWA для игры «песня наоборот». Работает в Chromium-браузере, пишет несжатый PCM через Web Audio и не отправляет звук на сервер.
+APOZH is a local, browser-based reverse-song party game. One player sings a familiar song, another player imitates short reversed fragments without hearing the original, and the app reconstructs the imitation into something that almost resembles the song again.
 
-## Запуск
+**Live app:** [apoj.saa.sh](https://apoj.saa.sh)
+
+The interface is available in English and Russian. APOZH is an independent, unofficial implementation intended for parties and private events.
+
+## What you need
+
+- A current desktop version of Chrome or Edge
+- Two players
+- A microphone or a USB audio interface/mixer
+- Speakers or headphones connected to the computer's system output
+
+No server, account, or internet connection is required after the app has been loaded once.
+
+## How to play
+
+1. Send player two to another room or give them headphones. They must not hear the original song.
+2. Player one records a verse or chorus normally.
+3. APOZH trims the recording and proposes chunk boundaries near quiet parts of the performance.
+4. Check the waveform. Drag a divider if it cuts through a word, then invite player two back.
+5. Player two hears each reversed chunk twice, with a visible pause between repeats.
+6. After the beep, player two imitates the sound. Recording starts on their voice and stops on silence.
+7. APOZH joins all imitations, reverses the complete recording, and plays the result.
+
+During the challenge, **Listen again** replays the current chunk. **Discard and try again** throws away the current take, while **Record again** replaces a take that has just finished.
+
+## Install the PWA and play offline
+
+1. Open [apoj.saa.sh](https://apoj.saa.sh) once while online.
+2. In Chrome or Edge, click the install icon in the address bar. APOZH also shows an **Install app** action when the browser makes installation available.
+3. Launch APOZH from the desktop, Start menu, or app launcher.
+
+The application shell, audio worklet, icons, and interface assets are cached by a service worker. Once installed and opened successfully, the game can be launched without internet access.
+
+## Sound setup
+
+Open **Setup** before the party and select the desired audio input. Stereo USB devices can be recorded as:
+
+- `L + R to mono`
+- `Left only`
+- `Right only`
+
+Browser echo cancellation, noise suppression, and automatic gain control are disabled to preserve the signal from an external mixer. Playback uses the operating system's selected output device.
+
+For reliable automatic stopping, route only the active vocal microphone into the USB recording bus. Music and unused microphones can keep the level above the silence threshold. The threshold and target chunk duration can be adjusted in Setup.
+
+## Audio and privacy
+
+Audio is captured as uncompressed mono PCM with the Web Audio API and an AudioWorklet. Recordings are processed entirely in browser memory:
+
+- nothing is uploaded;
+- nothing is saved to cloud storage;
+- refreshing or closing the app removes the current round.
+
+The smart splitter analyzes a smoothed RMS envelope and uses dynamic programming to prefer quiet boundaries without producing extremely short or long chunks. All proposed boundaries remain manually adjustable.
+
+## Browser support
+
+Chrome and Edge are the supported browsers. Other browsers may work, but microphone constraints, AudioWorklet behavior, PWA installation, and audio-device handling vary between engines.
+
+Microphone access requires HTTPS in production. `localhost` is treated as a secure context during development.
+
+## Local development
+
+The required Node.js version is recorded in `.node-version`.
 
 ```bash
 npm install
 npm run dev
 ```
 
-Открыть `http://localhost:4174`. Для настоящей игры лучше Chrome или Edge на ноутбуке. `localhost` считается безопасным контекстом и даёт доступ к микрофону.
+Open `http://localhost:4174`. Use **Demo without a microphone** to inspect the complete UI without audio hardware.
 
-Проверки:
+Useful commands:
 
 ```bash
-npm test
-npm run build
-npx playwright install chromium
-npm run test:e2e
+npm test             # DSP tests
+npm run test:e2e     # production PWA and browser flows
+npm run build        # type-check and create dist/
+npm run preview      # serve the production build locally
 ```
 
-## Игровой поток
+The end-to-end suite uses a fake Chromium microphone to exercise `getUserMedia`, the AudioWorklet recorder, waveform generation, repeat controls, the web app manifest, and offline reloads.
 
-1. Второй игрок уходит в другую комнату или надевает наушники, а первый поёт обычную песню.
-2. Приложение обрезает только тишину по краям и предлагает границы фрагментов.
-3. Второй игрок получает фрагменты с конца к началу, каждый проигрывается задом наперёд.
-4. После каждого фрагмента приложение само ждёт голос и заканчивает запись по тишине.
-5. Записанные ответы склеиваются в порядке задания и вся дорожка разворачивается — получается финальная «песня».
+## Deploy to Cloudflare Pages
 
-## Как выбираются фрагменты
+Connect this repository through Cloudflare Pages Git integration and use:
 
-Нарезка ищет тихие локальные минимумы RMS около равномерной сетки. Границы выбираются совместно динамическим программированием: штраф за громкий разрез конкурирует со штрафом за слишком короткие или длинные куски. Поэтому паузы между словами побеждают, а на протяжной ноте остаётся ровная нарезка. Любую границу можно перетащить перед началом игры.
+- Production branch: `main`
+- Build command: `npm run build`
+- Build output directory: `dist`
+- Root directory: leave empty
 
-Целевая длина по умолчанию — 2,6 секунды. Это не жёсткая длина, а пожелание алгоритму.
+The Node.js version and Pages output directory are already declared in `.node-version` and `wrangler.jsonc`. No environment variables or backend services are required. Add `apoj.saa.sh` under **Custom domains** after the first successful deployment.
 
-## Практический сетап
-
-- В браузере выбрать USB-микшер и нужный канал: сумма L+R, левый или правый.
-- В драйвере/Windows оставить системный выход, подключённый к колонкам.
-- На вокальном входе отключить эффекты, а в приложении отключены браузерные AGC, шумодав и эхоподавление.
-- Во время ответа второго игрока не пускать фонограмму в записываемый микрофонный bus: иначе автостоп будет слышать музыку как голос.
-
-Режим «Демо без микрофона» создаёт синтетическую дорожку и нужен для быстрой проверки интерфейса и Playwright-тестов.
-
-Интерфейс доступен на русском и английском; выбор языка сохраняется локально. Подробные технические решения и следующие шаги описаны в [docs/PLAN.md](docs/PLAN.md).
-
-## Cloudflare Pages
-
-Целевой адрес проекта: `https://apoj.saa.sh`.
-
-При подключении GitHub-репозитория выбрать:
-
-- production branch: `main`;
-- build command: `npm run build`;
-- build output directory: `dist`;
-- root directory: оставить пустым.
-
-Версия Node зафиксирована в `.node-version`, а `wrangler.jsonc` указывает Pages каталог `dist`. Переменные окружения и сервер не нужны. На выданном HTTPS-домене доступ к микрофону работает как в безопасном контексте.
-
-После первого успешного деплоя добавить `apoj.saa.sh` в **Custom domains** проекта Pages. Отдельный файл `CNAME` в репозитории не нужен.
+See [docs/PLAN.md](docs/PLAN.md) for implementation details and tuning notes.

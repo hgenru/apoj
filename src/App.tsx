@@ -1,4 +1,4 @@
-import { For, Match, Show, Switch, createEffect, createMemo, createSignal, onCleanup } from "solid-js";
+import { For, Match, Show, Switch, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import { AudioEngine } from "./audio/AudioEngine";
 import { createDemoClip } from "./audio/demo";
 import {
@@ -19,6 +19,11 @@ import type { AudioClip, AudioDeviceChoice, GameSettings } from "./types/audio";
 
 type Stage = "home" | "source" | "edit" | "handoff" | "challenge" | "reveal";
 type ChallengeStatus = "playing" | "between" | "ready" | "waiting" | "recording" | "saved";
+
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
+}
 
 const DEFAULT_SETTINGS: GameSettings = {
   channelMode: "mix",
@@ -70,6 +75,11 @@ export default function App() {
   const [extraListen, setExtraListen] = createSignal(false);
   const [demoMode, setDemoMode] = createSignal(false);
   const [redoRequested, setRedoRequested] = createSignal(false);
+  const [installPrompt, setInstallPrompt] = createSignal<BeforeInstallPromptEvent>();
+  const [installed, setInstalled] = createSignal(
+    window.matchMedia("(display-mode: standalone)").matches
+      || Boolean((navigator as Navigator & { standalone?: boolean }).standalone),
+  );
   let sourceTimer: number | undefined;
   let challengeRun = 0;
   let stopCurrentAttempt: (() => void) | undefined;
@@ -105,6 +115,31 @@ export default function App() {
     window.clearInterval(sourceTimer);
     void engine.dispose();
   });
+
+  onMount(() => {
+    const handleInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      setInstallPrompt(event as BeforeInstallPromptEvent);
+    };
+    const handleInstalled = () => {
+      setInstalled(true);
+      setInstallPrompt(undefined);
+    };
+    window.addEventListener("beforeinstallprompt", handleInstallPrompt);
+    window.addEventListener("appinstalled", handleInstalled);
+    onCleanup(() => {
+      window.removeEventListener("beforeinstallprompt", handleInstallPrompt);
+      window.removeEventListener("appinstalled", handleInstalled);
+    });
+  });
+
+  const installApp = async () => {
+    const prompt = installPrompt();
+    if (!prompt) return;
+    await prompt.prompt();
+    await prompt.userChoice;
+    setInstallPrompt(undefined);
+  };
 
   const connectMicrophone = async () => {
     setSetupBusy(true);
@@ -393,7 +428,12 @@ export default function App() {
                   <button class="button button--primary button--large" onClick={beginRound}>{t("home.start")} <span>→</span></button>
                   <button class="button button--ghost" onClick={loadDemo}>{t("home.demo")}</button>
                 </div>
-                <p class="local-note"><span>●</span> {t("app.local")}</p>
+                <div class="lobby__utility">
+                  <p class="local-note"><span>●</span> {t("app.local")}</p>
+                  <Show when={installPrompt() && !installed()}>
+                    <button class="install-button" type="button" onClick={() => void installApp()}>↓ {t("app.install")}</button>
+                  </Show>
+                </div>
               </div>
               <div class="hero__visual" aria-hidden="true">
                 <div class="vinyl vinyl--back"><span>Ж</span></div>

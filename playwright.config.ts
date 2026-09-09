@@ -49,7 +49,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "npm run dev",
+    command: "npm run build && npm run preview",
     port: 4174,
     reuseExistingServer: !process.env.CI,
     timeout: 30_000,

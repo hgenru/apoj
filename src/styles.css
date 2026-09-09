@@ -459,6 +459,35 @@ h1 em {
   font-size: 0.82rem;
 }
 
+.lobby__utility {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  margin-top: 23px;
+}
+
+.lobby__utility .local-note {
+  margin: 0;
+}
+
+.install-button {
+  padding: 5px 0;
+  border: 0;
+  border-bottom: 1px solid rgb(82 214 197 / 42%);
+  color: var(--mint);
+  background: transparent;
+  font-size: 0.82rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.install-button:hover {
+  border-color: var(--mint);
+}
+
 .local-note span {
   margin-right: 5px;
   color: var(--mint);

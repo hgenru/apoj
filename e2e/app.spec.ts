@@ -52,3 +52,30 @@ test("separates repeats and offers another listen", async ({ page }) => {
   await page.getByRole("button", { name: /Послушать ещё раз/ }).click();
   await expect(page.getByRole("heading", { name: /Слушай ещё раз/ })).toBeVisible();
 });
+
+test("has a valid installable web app manifest", async ({ page, context }) => {
+  await page.goto("/");
+  await page.evaluate(async () => navigator.serviceWorker.ready);
+  await page.reload();
+
+  const cdp = await context.newCDPSession(page);
+  const manifest = await cdp.send("Page.getAppManifest");
+  const installability = await cdp.send("Page.getInstallabilityErrors");
+
+  expect(manifest.url).toContain("manifest.webmanifest");
+  expect(manifest.errors).toEqual([]);
+  const appErrors = installability.installabilityErrors.filter(({ errorId }) => errorId !== "in-incognito");
+  expect(appErrors).toEqual([]);
+});
+
+test("reloads while completely offline after the first visit", async ({ page, context }) => {
+  await page.goto("/");
+  await page.evaluate(async () => navigator.serviceWorker.ready);
+  await page.reload();
+  await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller));
+
+  await context.setOffline(true);
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("home-screen")).toBeVisible();
+  await context.setOffline(false);
+});
