@@ -1,6 +1,5 @@
 import { For, Match, Show, Switch, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import { AudioEngine } from "./audio/AudioEngine";
-import { createDemoClip } from "./audio/demo";
 import {
   assembleReveal,
   buildChallenge,
@@ -44,6 +43,8 @@ const PARTY_TIMING = {
   betweenRepeatsMs: 2_000,
   beforeRecordingMs: 2_400,
   afterSavedMs: 3_000,
+  finalSavedMs: 1_500,
+  revealAutoplayMs: 2_200,
 } as const;
 
 function readSettings(): GameSettings {
@@ -94,19 +95,20 @@ export default function App() {
   const [challengeRepeat, setChallengeRepeat] = createSignal(1);
   const [challengeCountdown, setChallengeCountdown] = createSignal<number>();
   const [extraListen, setExtraListen] = createSignal(false);
-  const [demoMode, setDemoMode] = createSignal(false);
   const [redoRequested, setRedoRequested] = createSignal(false);
+  const [revealAutoplayPending, setRevealAutoplayPending] = createSignal(false);
   const [installPrompt, setInstallPrompt] = createSignal<BeforeInstallPromptEvent>();
   const [installed, setInstalled] = createSignal(
     window.matchMedia("(display-mode: standalone)").matches
       || Boolean((navigator as Navigator & { standalone?: boolean }).standalone),
   );
   let sourceTimer: number | undefined;
+  let revealAutoplayTimer: number | undefined;
   let challengeRun = 0;
   let stopCurrentAttempt: (() => void) | undefined;
   let startCurrentAttempt: (() => void) | undefined;
   let requestReplay: (() => void) | undefined;
-  let requestManualRecord: (() => void) | undefined;
+  let requestReadyProceed: (() => void) | undefined;
   let requestSavedRedo: (() => void) | undefined;
   let requestSavedNext: (() => void) | undefined;
   let requestMissedRetry: (() => void) | undefined;
@@ -115,7 +117,27 @@ export default function App() {
     const clip = sourceClip();
     return clip ? buildChallenge(clip, boundaries()) : [];
   });
+  const hasNextChallengeClip = createMemo(() => challengeIndex() + 1 < challengeClips().length);
   const revealClip = createMemo(() => (attempts().length ? assembleReveal(attempts()) : undefined));
+
+  createEffect(() => {
+    const clip = revealClip();
+    if (stage() !== "reveal" || settings().controlMode !== "auto" || !clip) {
+      setRevealAutoplayPending(false);
+      return;
+    }
+    setRevealAutoplayPending(true);
+    revealAutoplayTimer = window.setTimeout(() => {
+      if (stage() !== "reveal") return;
+      revealAutoplayTimer = undefined;
+      setRevealAutoplayPending(false);
+      void engine.play(clip);
+    }, PARTY_TIMING.revealAutoplayMs);
+    onCleanup(() => {
+      window.clearTimeout(revealAutoplayTimer);
+      revealAutoplayTimer = undefined;
+    });
+  });
 
   createEffect(() => {
     localStorage.setItem("apoj-settings", JSON.stringify(settings()));
@@ -190,7 +212,6 @@ export default function App() {
 
   const beginRound = () => {
     setError("");
-    setDemoMode(false);
     if (!micReady()) {
       setSetupPurpose("round");
       setSetupOpen(true);
@@ -202,14 +223,6 @@ export default function App() {
   const finishSetup = () => {
     setSetupOpen(false);
     if (setupPurpose() === "round") setStage("source");
-  };
-
-  const loadDemo = () => {
-    const clip = trimSilence(createDemoClip());
-    setDemoMode(true);
-    setSourceClip(clip);
-    setBoundaries(findSmartBoundaries(clip, { targetSeconds: settings().targetChunkSeconds }));
-    setStage("edit");
   };
 
   const startSourceRecording = () => {
@@ -268,15 +281,6 @@ export default function App() {
     expectedClip: AudioClip,
     ambientLevels: number[],
   ): Promise<CapturedAttempt | undefined> => {
-    if (demoMode()) {
-      setLiveWaveform([]);
-      setChallengeStatus("waiting");
-      await delay(220);
-      setChallengeStatus("recording");
-      await delay(420);
-      return { clip: expectedClip, voiceDetected: true };
-    }
-
     setLiveWaveform([]);
     engine.startRecording();
     setChallengeStatus("waiting");
@@ -329,9 +333,9 @@ export default function App() {
     };
   };
 
-  const captureManualAttempt = async (token: number, expectedClip: AudioClip): Promise<CapturedAttempt | undefined> => {
+  const captureManualAttempt = async (token: number): Promise<CapturedAttempt | undefined> => {
     setLiveWaveform([]);
-    if (!demoMode()) engine.startRecording();
+    engine.startRecording();
     setChallengeStatus("recording");
 
     await new Promise<void>((resolve) => {
@@ -344,7 +348,6 @@ export default function App() {
       };
     });
 
-    if (demoMode()) return { clip: expectedClip, voiceDetected: true };
     const recorded = await engine.stopRecording();
     if (token !== challengeRun) return undefined;
     return { clip: trimSilence(recorded), voiceDetected: true };
@@ -365,10 +368,12 @@ export default function App() {
       window.clearTimeout(timer);
       window.clearInterval(interval);
       requestReplay = undefined;
+      requestReadyProceed = undefined;
       setChallengeCountdown(undefined);
       resolve({ replay: replay && token === challengeRun, ambientLevels });
     };
     requestReplay = () => finish(true);
+    requestReadyProceed = () => finish(false);
     update();
     const interval = window.setInterval(update, 100);
     timer = window.setTimeout(() => finish(false), PARTY_TIMING.beforeRecordingMs);
@@ -380,14 +385,14 @@ export default function App() {
       if (settled) return;
       settled = true;
       requestReplay = undefined;
-      requestManualRecord = undefined;
+      requestReadyProceed = undefined;
       resolve(token === challengeRun ? choice : "cancel");
     };
     requestReplay = () => finish("replay");
-    requestManualRecord = () => finish("record");
+    requestReadyProceed = () => finish("record");
   });
 
-  const waitForSavedChoice = (token: number) => new Promise<boolean>((resolve) => {
+  const waitForSavedChoice = (token: number, hasNext: boolean) => new Promise<boolean>((resolve) => {
     let settled = false;
     let timer: number | undefined;
     let interval: number | undefined;
@@ -406,9 +411,13 @@ export default function App() {
     requestSavedRedo = () => finish(true);
     requestSavedNext = () => finish(false);
     if (settings().controlMode === "manual") return;
-    update();
-    interval = window.setInterval(update, 100);
-    timer = window.setTimeout(() => finish(false), PARTY_TIMING.afterSavedMs);
+    if (hasNext) {
+      update();
+      interval = window.setInterval(update, 100);
+      timer = window.setTimeout(() => finish(false), PARTY_TIMING.afterSavedMs);
+    } else {
+      timer = window.setTimeout(() => finish(false), PARTY_TIMING.finalSavedMs);
+    }
   });
 
   const waitForMissedRetry = (token: number) => new Promise<boolean>((resolve) => {
@@ -464,10 +473,10 @@ export default function App() {
           setExtraListen(false);
         }
         if (token !== challengeRun) return;
-        if (!demoMode()) await engine.beep(820, 110);
+        await engine.beep(820, 110);
         const captured = settings().controlMode === "auto"
           ? await captureAutomaticAttempt(token, clip, ambientLevels)
-          : await captureManualAttempt(token, clip);
+          : await captureManualAttempt(token);
         if (!captured || token !== challengeRun) return;
         if (redoRequested()) {
           setAttempts((current) => current.slice(0, index));
@@ -483,7 +492,7 @@ export default function App() {
         nextAttempts[index] = attempt;
         setAttempts(nextAttempts);
         setChallengeStatus("saved");
-        const redo = await waitForSavedChoice(token);
+        const redo = await waitForSavedChoice(token, index + 1 < challengeClips().length);
         if (token !== challengeRun) return;
         if (redo) {
           setAttempts((current) => current.slice(0, index));
@@ -503,10 +512,12 @@ export default function App() {
 
   const cancelRound = async () => {
     challengeRun += 1;
+    window.clearTimeout(revealAutoplayTimer);
+    revealAutoplayTimer = undefined;
     stopCurrentAttempt?.();
     startCurrentAttempt = undefined;
     requestReplay?.();
-    requestManualRecord?.();
+    requestReadyProceed?.();
     requestSavedRedo?.();
     requestSavedNext?.();
     requestMissedRetry?.();
@@ -526,6 +537,108 @@ export default function App() {
     setAttempts([]);
     setError("");
   };
+
+  const cancelRevealAutoplay = () => {
+    window.clearTimeout(revealAutoplayTimer);
+    revealAutoplayTimer = undefined;
+    setRevealAutoplayPending(false);
+  };
+
+  const playRevealResult = () => {
+    cancelRevealAutoplay();
+    const clip = revealClip();
+    if (clip) void engine.play(clip);
+  };
+
+  const playRevealOriginal = () => {
+    cancelRevealAutoplay();
+    const clip = sourceClip();
+    if (clip) void engine.play(clip);
+  };
+
+  const runPrimaryShortcut = () => {
+    if (setupOpen()) return;
+    switch (stage()) {
+      case "home":
+        beginRound();
+        break;
+      case "source":
+        if (sourceRecording()) void stopSourceRecording();
+        else startSourceRecording();
+        break;
+      case "edit":
+        if (sourceClip()) setStage("handoff");
+        break;
+      case "handoff":
+        void runChallenge();
+        break;
+      case "challenge":
+        if (challengeStatus() === "ready") requestReadyProceed?.();
+        else if (challengeStatus() === "waiting") startCurrentAttempt?.();
+        else if (challengeStatus() === "recording") stopCurrentAttempt?.();
+        else if (challengeStatus() === "saved" && settings().controlMode === "manual") requestSavedNext?.();
+        else if (challengeStatus() === "missed") requestMissedRetry?.();
+        break;
+      case "reveal": {
+        playRevealResult();
+        break;
+      }
+    }
+  };
+
+  const runRepeatShortcut = () => {
+    if (setupOpen() || stage() !== "challenge") return;
+    if (challengeStatus() === "ready") requestReplay?.();
+    else if (challengeStatus() === "recording") {
+      setRedoRequested(true);
+      stopCurrentAttempt?.();
+    } else if (challengeStatus() === "saved") requestSavedRedo?.();
+  };
+
+  onMount(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      if (event.repeat || event.ctrlKey || event.metaKey || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      const isInteractive = target?.matches("button, input, select, textarea, a, [contenteditable='true']");
+      if (isInteractive) return;
+
+      if (event.code === "Space" || event.key === "MediaPlayPause") {
+        event.preventDefault();
+        runPrimaryShortcut();
+      } else if (event.code === "KeyR") {
+        event.preventDefault();
+        runRepeatShortcut();
+      } else if (stage() === "home" && event.code === "Digit1") {
+        setSettings((current) => ({ ...current, controlMode: "auto" }));
+      } else if (stage() === "home" && event.code === "Digit2") {
+        setSettings((current) => ({ ...current, controlMode: "manual" }));
+      } else if (stage() === "reveal" && event.code === "KeyO") {
+        playRevealOriginal();
+      } else if (stage() === "reveal" && event.code === "KeyN") {
+        void cancelRound();
+      }
+    };
+
+    window.addEventListener("keydown", handleShortcut);
+    const mediaSession = "mediaSession" in navigator ? navigator.mediaSession : undefined;
+    const setMediaHandler = (action: MediaSessionAction, handler: MediaSessionActionHandler | null) => {
+      try {
+        mediaSession?.setActionHandler(action, handler);
+      } catch {
+        // Browsers expose different subsets of media-key actions.
+      }
+    };
+    setMediaHandler("play", runPrimaryShortcut);
+    setMediaHandler("pause", runPrimaryShortcut);
+    setMediaHandler("previoustrack", runRepeatShortcut);
+
+    onCleanup(() => {
+      window.removeEventListener("keydown", handleShortcut);
+      setMediaHandler("play", null);
+      setMediaHandler("pause", null);
+      setMediaHandler("previoustrack", null);
+    });
+  });
 
   return (
     <div class="app-shell">
@@ -567,15 +680,45 @@ export default function App() {
           <Match when={stage() === "home"}>
             <section class="lobby" data-testid="home-screen">
               <div class="lobby__panel">
-                <h1>{t("home.titleTop")}</h1>
+                <h1 class="lobby__title" aria-label={t("home.titleTop")}>
+                  <For each={Array.from(t("home.titleTop"))}>{(letter) => <span>{letter}</span>}</For>
+                </h1>
                 <p class="lobby__description">{t("home.description")}</p>
+                <div class="lobby-mode">
+                  <p>{t("home.modeLabel")}</p>
+                  <div class="lobby-mode__options" role="group" aria-label={t("home.modeLabel")}>
+                    <button
+                      type="button"
+                      aria-keyshortcuts="1"
+                      aria-pressed={settings().controlMode === "auto"}
+                      classList={{ "lobby-mode__option": true, active: settings().controlMode === "auto" }}
+                      onClick={() => setSettings((current) => ({ ...current, controlMode: "auto" }))}
+                    >
+                      <span class="lobby-mode__icon" aria-hidden="true">✦</span>
+                      <span><strong>{t("setup.modeAuto")}</strong><small>{t("setup.modeAutoHint")}</small></span>
+                      <kbd>1</kbd>
+                    </button>
+                    <button
+                      type="button"
+                      aria-keyshortcuts="2"
+                      aria-pressed={settings().controlMode === "manual"}
+                      classList={{ "lobby-mode__option": true, active: settings().controlMode === "manual" }}
+                      onClick={() => setSettings((current) => ({ ...current, controlMode: "manual" }))}
+                    >
+                      <span class="lobby-mode__icon" aria-hidden="true">●</span>
+                      <span><strong>{t("setup.modeManual")}</strong><small>{t("setup.modeManualHint")}</small></span>
+                      <kbd>2</kbd>
+                    </button>
+                  </div>
+                </div>
                 <div classList={{ "lobby__sound": true, "lobby__sound--ready": micReady() }}>
                   <span>●</span>
                   {micReady() ? t("home.soundReady") : t("home.soundMissing")}
                 </div>
                 <div class="lobby__actions">
-                  <button class="button button--primary party-button" onClick={beginRound}>{t("home.start")} <span>→</span></button>
-                  <button class="button button--ghost party-button" onClick={loadDemo}>{t("home.demo")}</button>
+                  <button class="button button--primary party-button" aria-keyshortcuts="Space" onClick={beginRound}>
+                    {t("home.start")} <span>→</span><kbd>{t("shortcut.primary")}</kbd>
+                  </button>
                 </div>
                 <Show when={installPrompt() && !installed()}>
                   <button class="install-button" type="button" onClick={() => void installApp()}>↓ {t("app.install")}</button>
@@ -599,7 +742,7 @@ export default function App() {
                 <aside class="secret-tip">🙉 {t("record.secretTip")}</aside>
               </div>
               <div class="source-wave-panel">
-                <LiveWaveform values={liveWaveform()} active={sourceRecording()} />
+                <LiveWaveform values={liveWaveform()} active={sourceRecording()} flow="rolling" />
               </div>
               <div class="source-dock">
                 <div class="source-dock__status">
@@ -612,9 +755,11 @@ export default function App() {
                 <button
                   classList={{ "button": true, "button--primary": !sourceRecording(), "button--secondary": sourceRecording(), "party-button": true }}
                   aria-label={sourceRecording() ? t("record.stop") : t("record.start")}
+                  aria-keyshortcuts="Space"
                   onClick={() => sourceRecording() ? void stopSourceRecording() : startSourceRecording()}
                 >
                   {sourceRecording() ? `■ ${t("record.stop")}` : `● ${t("record.start")}`}
+                  <kbd>{t("shortcut.primary")}</kbd>
                 </button>
               </div>
               <Show when={error()}><p class="error-message">{error()}</p></Show>
@@ -637,7 +782,9 @@ export default function App() {
                 <WaveformEditor clip={clip()} boundaries={boundaries()} onChange={setBoundaries} onPlay={playEditorChunk} />
                 <div class="stage-actions stage-actions--end">
                   <button class="button button--ghost party-button" onClick={splitAgain}>↻ {t("edit.auto")}</button>
-                  <button class="button button--primary party-button" onClick={() => setStage("handoff")}>{t("edit.accept")} <span>→</span></button>
+                  <button class="button button--primary party-button" aria-keyshortcuts="Space" onClick={() => setStage("handoff")}>
+                    {t("edit.accept")} <span>→</span><kbd>{t("shortcut.primary")}</kbd>
+                  </button>
                 </div>
               </section>
             )}
@@ -649,7 +796,9 @@ export default function App() {
               <div class="handoff__icon" aria-hidden="true">🎤<span>→</span></div>
               <h1>{t("handoff.inviteBack")}</h1>
               <p class="stage__hint">{t("handoff.description")}</p>
-              <button class="button button--primary party-button" onClick={() => void runChallenge()}>{t("handoff.start")} <span>→</span></button>
+              <button class="button button--primary party-button" aria-keyshortcuts="Space" onClick={() => void runChallenge()}>
+                {t("handoff.start")} <span>→</span><kbd>{t("shortcut.primary")}</kbd>
+              </button>
             </section>
           </Match>
 
@@ -683,7 +832,9 @@ export default function App() {
                       <Show when={challengeStatus() === "ready"}>
                         {settings().controlMode === "auto" ? challengeCountdown() ?? 1 : "●"}
                       </Show>
-                      <Show when={challengeStatus() === "saved"}>✓</Show>
+                      <Show when={challengeStatus() === "saved"}>
+                        {settings().controlMode === "auto" && hasNextChallengeClip() ? challengeCountdown() ?? 1 : "✓"}
+                      </Show>
                       <Show when={challengeStatus() === "missed"}>?</Show>
                     </div>
                   }
@@ -725,59 +876,97 @@ export default function App() {
                 <div class="challenge-screen__support">
                   <Show when={challengeStatus() === "ready" && settings().controlMode === "auto"}>{t("challenge.autoStarts")}</Show>
                   <Show when={challengeStatus() === "waiting"}>{t("challenge.autoListening")}</Show>
-                  <Show when={challengeStatus() === "saved" && settings().controlMode === "auto" && challengeCountdown()}>
-                    {t("challenge.nextSoon", { seconds: challengeCountdown()! })}
+                  <Show when={challengeStatus() === "saved" && settings().controlMode === "auto"}>
+                    {hasNextChallengeClip() ? t("challenge.nextSoon") : t("challenge.revealSoon")}
                   </Show>
-                  <Show when={challengeStatus() === "saved" && settings().controlMode === "manual"}>{t("challenge.manualSaved")}</Show>
+                  <Show when={challengeStatus() === "saved" && settings().controlMode === "manual"}>
+                    {hasNextChallengeClip() ? t("challenge.manualSaved") : t("challenge.manualReveal")}
+                  </Show>
                 </div>
               </div>
 
               <div class="challenge-screen__controls">
                 <Show when={challengeStatus() === "ready"}>
-                  <button class="button button--secondary party-button" onClick={() => requestReplay?.()}>↶ {t("challenge.listenAgain")}</button>
+                  <button class="button button--secondary party-button" aria-keyshortcuts="R" onClick={() => requestReplay?.()}>
+                    ↶ {t("challenge.listenAgain")}<kbd>{t("shortcut.repeat")}</kbd>
+                  </button>
                   <Show when={settings().controlMode === "manual"}>
-                    <button class="button button--primary party-button" onClick={() => requestManualRecord?.()}>● {t("challenge.startRecording")}</button>
+                    <button class="button button--primary party-button" aria-keyshortcuts="Space" onClick={() => requestReadyProceed?.()}>
+                      ● {t("challenge.startRecording")}<kbd>{t("shortcut.primary")}</kbd>
+                    </button>
                   </Show>
                 </Show>
                 <Show when={challengeStatus() === "waiting"}>
-                  <button class="button button--secondary party-button" onClick={() => startCurrentAttempt?.()}>{t("challenge.startManual")}</button>
+                  <button class="button button--secondary party-button" aria-keyshortcuts="Space" onClick={() => startCurrentAttempt?.()}>
+                    {t("challenge.startManual")}<kbd>{t("shortcut.primary")}</kbd>
+                  </button>
                 </Show>
                 <Show when={challengeStatus() === "recording"}>
-                  <button class="button button--secondary party-button" onClick={() => stopCurrentAttempt?.()}>■ {t("challenge.stop")}</button>
+                  <button class="button button--secondary party-button" aria-keyshortcuts="Space" onClick={() => stopCurrentAttempt?.()}>
+                    ■ {t("challenge.stop")}<kbd>{t("shortcut.primary")}</kbd>
+                  </button>
                   <button
                     class="button button--ghost party-button"
+                    aria-keyshortcuts="R"
                     onClick={() => {
                       setRedoRequested(true);
                       stopCurrentAttempt?.();
                     }}
                   >
-                    ↶ {t("challenge.discard")}
+                    ↶ {t("challenge.discard")}<kbd>{t("shortcut.repeat")}</kbd>
                   </button>
                 </Show>
                 <Show when={challengeStatus() === "saved"}>
-                  <button class="button button--secondary party-button" onClick={() => requestSavedRedo?.()}>↶ {t("challenge.redo")}</button>
+                  <button class="button button--secondary party-button" aria-keyshortcuts="R" onClick={() => requestSavedRedo?.()}>
+                    ↶ {t("challenge.redo")}<kbd>{t("shortcut.repeat")}</kbd>
+                  </button>
                   <Show when={settings().controlMode === "manual"}>
-                    <button class="button button--primary party-button" onClick={() => requestSavedNext?.()}>{t("challenge.next")} →</button>
+                    <button class="button button--primary party-button" aria-keyshortcuts="Space" onClick={() => requestSavedNext?.()}>
+                      {hasNextChallengeClip() ? t("challenge.next") : t("challenge.showResult")} →<kbd>{t("shortcut.primary")}</kbd>
+                    </button>
                   </Show>
                 </Show>
                 <Show when={challengeStatus() === "missed"}>
-                  <button class="button button--primary party-button" onClick={() => requestMissedRetry?.()}>↻ {t("challenge.tryAgain")}</button>
+                  <button class="button button--primary party-button" aria-keyshortcuts="Space" onClick={() => requestMissedRetry?.()}>
+                    ↻ {t("challenge.tryAgain")}<kbd>{t("shortcut.primary")}</kbd>
+                  </button>
                 </Show>
               </div>
             </section>
           </Match>
 
           <Match when={stage() === "reveal"}>
-            <section class="stage stage--center reveal" data-testid="reveal-screen">
-              <p class="eyebrow">{t("reveal.eyebrow")}</p>
-              <div class="reveal__burst" aria-hidden="true"><span>↶</span></div>
-              <h1>{t("reveal.title")}</h1>
-              <p class="stage__hint">{t("reveal.description")}</p>
-              <div class="reveal__actions">
-                <button class="button button--primary button--large" onClick={() => revealClip() && void engine.play(revealClip()!)}>▶ {t("reveal.playResult")}</button>
-                <button class="button button--ghost" onClick={() => sourceClip() && void engine.play(sourceClip()!)}>▶ {t("reveal.playOriginal")}</button>
+            <section class="stage stage--center reveal party-reveal" data-testid="reveal-screen">
+              <div class="reveal-confetti" aria-hidden="true">
+                <For each={Array.from({ length: 16 })}>{() => <i />}</For>
               </div>
-              <button class="button button--quiet" onClick={() => void cancelRound()}>↻ {t("reveal.newRound")}</button>
+              <div class="reveal__progress" aria-hidden="true">
+                <For each={challengeClips()}>{() => <span />}</For>
+              </div>
+              <div class="reveal__visual" aria-hidden="true">
+                <div class="reveal-record reveal-record--back">Ж</div>
+                <div class="reveal-record reveal-record--front">А</div>
+                <div class="reveal__burst"><span>↶</span></div>
+              </div>
+              <div class="reveal__copy">
+                <p class="eyebrow">{t("reveal.eyebrow")}</p>
+                <h1>{t("reveal.title")}</h1>
+                <p class="stage__hint">{t("reveal.description")}</p>
+              </div>
+              <div class="reveal__actions">
+                <button class="button button--primary party-button" aria-keyshortcuts="Space" onClick={playRevealResult}>
+                  ▶ {t("reveal.playResult")}<kbd>{t("shortcut.primary")}</kbd>
+                </button>
+                <button class="button button--ghost party-button" aria-keyshortcuts="O" onClick={playRevealOriginal}>
+                  ▶ {t("reveal.playOriginal")}<kbd>{t("shortcut.original")}</kbd>
+                </button>
+              </div>
+              <p class="reveal__autoplay" aria-live="polite">
+                {settings().controlMode === "auto" && revealAutoplayPending() ? t("reveal.autoplay") : "\u00a0"}
+              </p>
+              <button class="button button--quiet reveal__new-round" aria-keyshortcuts="N" onClick={() => void cancelRound()}>
+                ↻ {t("reveal.newRound")}<kbd>{t("shortcut.new")}</kbd>
+              </button>
             </section>
           </Match>
         </Switch>

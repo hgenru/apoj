@@ -11,7 +11,7 @@
 7. The recorded answers are concatenated in challenge order and the whole result is reversed.
 8. The group compares the reconstructed song with the original.
 
-Auto mode only needs the initial “ready” button; voice detection runs the challenge after that. Manual mode keeps automatic playback repeats but requires explicit start, stop, and next-fragment actions for rooms where reliable detection is impossible.
+Auto and Manual are selected on the home screen. Auto mode only needs the initial “ready” button; voice detection runs the challenge after that and plays the reconstructed result after a short reveal. Manual mode keeps automatic playback repeats but requires explicit start, stop, and next-fragment actions for rooms where reliable detection is impossible. Space and common media keys trigger the primary action on each stage; R or Previous Track handles replay and retake actions.
 
 ## Stack
 

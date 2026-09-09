@@ -5,6 +5,7 @@ interface LiveWaveformProps {
   values: number[];
   active: boolean;
   tone?: "coral" | "mint";
+  flow?: "history" | "rolling";
 }
 
 const WIDTH = 960;
@@ -13,6 +14,7 @@ const BAR_COUNT = 96;
 
 export const LiveWaveform: Component<LiveWaveformProps> = (props) => {
   const bars = createMemo(() => {
+    if (props.flow === "rolling") return props.values.slice(-BAR_COUNT);
     if (props.values.length <= BAR_COUNT) return props.values;
     const bucketSize = props.values.length / BAR_COUNT;
     return Array.from({ length: BAR_COUNT }, (_, bucket) => {

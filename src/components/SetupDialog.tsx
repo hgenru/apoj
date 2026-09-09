@@ -36,92 +36,81 @@ export const SetupDialog: Component<SetupDialogProps> = (props) => {
             <button class="icon-button" type="button" onClick={props.onClose} aria-label={t("common.close")}>×</button>
           </div>
 
-          <div class="settings-grid">
-            <div class="field field--wide">
-              <span>{t("setup.controlMode")}</span>
-              <div class="segmented segmented--mode" role="group" aria-label={t("setup.controlMode")}>
-                <button
-                  type="button"
-                  classList={{ active: props.settings.controlMode === "auto" }}
-                  onClick={() => patchSettings({ controlMode: "auto" })}
-                >
-                  <strong>{t("setup.modeAuto")}</strong>
-                  <small>{t("setup.modeAutoHint")}</small>
-                </button>
-                <button
-                  type="button"
-                  classList={{ active: props.settings.controlMode === "manual" }}
-                  onClick={() => patchSettings({ controlMode: "manual" })}
-                >
-                  <strong>{t("setup.modeManual")}</strong>
-                  <small>{t("setup.modeManualHint")}</small>
-                </button>
+          <div class="setup-layout">
+            <section class="setup-section">
+              <div class="setup-section__heading">
+                <span aria-hidden="true">01</span>
+                <h3>{t("setup.audioTitle")}</h3>
               </div>
-            </div>
 
-            <label class="field field--wide">
-              <span>{t("setup.input")}</span>
-              <select value={props.selectedDevice} onChange={(event) => props.onDeviceChange(event.currentTarget.value)}>
-                <option value="">{t("setup.defaultInput")}</option>
-                <For each={props.devices}>{(device) => <option value={device.deviceId}>{device.label}</option>}</For>
-              </select>
-              <small>{t("setup.deviceHint")}</small>
-            </label>
+              <label class="field" for="setup-input">
+                <span>{t("setup.input")}</span>
+                <select id="setup-input" value={props.selectedDevice} onChange={(event) => props.onDeviceChange(event.currentTarget.value)}>
+                  <option value="">{t("setup.defaultInput")}</option>
+                  <For each={props.devices}>{(device) => <option value={device.deviceId}>{device.label}</option>}</For>
+                </select>
+                <small>{t("setup.deviceHint")}</small>
+              </label>
 
-            <label class="field">
-              <span>{t("setup.channel")}</span>
-              <select
-                value={props.settings.channelMode}
-                onChange={(event) => patchSettings({ channelMode: event.currentTarget.value as GameSettings["channelMode"] })}
-              >
-                <option value="mix">{t("setup.channelMix")}</option>
-                <option value="left">{t("setup.channelLeft")}</option>
-                <option value="right">{t("setup.channelRight")}</option>
-              </select>
-            </label>
-
-            <label class="field">
-              <span>{t("setup.repeats")}</span>
-              <div class="segmented" role="group" aria-label={t("setup.repeats")}>
-                <button type="button" classList={{ active: props.settings.repeats === 1 }} onClick={() => patchSettings({ repeats: 1 })}>{t("setup.once")}</button>
-                <button type="button" classList={{ active: props.settings.repeats === 2 }} onClick={() => patchSettings({ repeats: 2 })}>{t("setup.twice")}</button>
+              <div class="field">
+                <span>{t("setup.channel")}</span>
+                <div class="segmented segmented--large" role="group" aria-label={t("setup.channel")}>
+                  <button type="button" aria-pressed={props.settings.channelMode === "mix"} classList={{ active: props.settings.channelMode === "mix" }} onClick={() => patchSettings({ channelMode: "mix" })}>{t("setup.channelMix")}</button>
+                  <button type="button" aria-pressed={props.settings.channelMode === "left"} classList={{ active: props.settings.channelMode === "left" }} onClick={() => patchSettings({ channelMode: "left" })}>{t("setup.channelLeft")}</button>
+                  <button type="button" aria-pressed={props.settings.channelMode === "right"} classList={{ active: props.settings.channelMode === "right" }} onClick={() => patchSettings({ channelMode: "right" })}>{t("setup.channelRight")}</button>
+                </div>
               </div>
-            </label>
 
-            <label class="field field--wide">
-              <span>{t("setup.chunkLength")} <strong>{t("common.seconds", { value: props.settings.targetChunkSeconds.toFixed(1) })}</strong></span>
-              <input
-                type="range"
-                min="1.4"
-                max="3.4"
-                step="0.1"
-                value={props.settings.targetChunkSeconds}
-                onInput={(event) => patchSettings({ targetChunkSeconds: Number(event.currentTarget.value) })}
-              />
-              <div class="range-labels"><small>{t("setup.harder")}</small><small>{t("setup.easier")}</small></div>
-            </label>
+              <div class="sound-check">
+                <div class="sound-check__status">
+                  <span classList={{ "status-dot": true, "status-dot--ready": props.ready }} />
+                  <span>{props.ready ? t("setup.ready") : t("setup.notReady")}</span>
+                </div>
+                <LevelMeter level={props.level} />
+                <small>{t("setup.outputHint")}</small>
+              </div>
+            </section>
 
-            <label class="field field--wide">
-              <span>{t("setup.sensitivity")} <strong>{props.settings.voiceThresholdDb} dB</strong></span>
-              <input
-                type="range"
-                min="-55"
-                max="-28"
-                step="1"
-                value={props.settings.voiceThresholdDb}
-                onInput={(event) => patchSettings({ voiceThresholdDb: Number(event.currentTarget.value) })}
-              />
-              <small>{t("setup.sensitivityHint")}</small>
-            </label>
-          </div>
+            <section class="setup-section">
+              <div class="setup-section__heading">
+                <span aria-hidden="true">02</span>
+                <h3>{t("setup.roundTitle")}</h3>
+              </div>
 
-          <div class="sound-check">
-            <div class="sound-check__status">
-              <span classList={{ "status-dot": true, "status-dot--ready": props.ready }} />
-              <span>{props.ready ? t("setup.ready") : t("setup.notReady")}</span>
-            </div>
-            <LevelMeter level={props.level} />
-            <small>{t("setup.outputHint")}</small>
+              <div class="field">
+                <span>{t("setup.repeats")}</span>
+                <div class="segmented segmented--large" role="group" aria-label={t("setup.repeats")}>
+                  <button type="button" aria-pressed={props.settings.repeats === 1} classList={{ active: props.settings.repeats === 1 }} onClick={() => patchSettings({ repeats: 1 })}>{t("setup.once")}</button>
+                  <button type="button" aria-pressed={props.settings.repeats === 2} classList={{ active: props.settings.repeats === 2 }} onClick={() => patchSettings({ repeats: 2 })}>{t("setup.twice")}</button>
+                </div>
+              </div>
+
+              <label class="field">
+                <span>{t("setup.chunkLength")} <strong>{t("common.seconds", { value: props.settings.targetChunkSeconds.toFixed(1) })}</strong></span>
+                <input
+                  type="range"
+                  min="1.4"
+                  max="3.4"
+                  step="0.1"
+                  value={props.settings.targetChunkSeconds}
+                  onInput={(event) => patchSettings({ targetChunkSeconds: Number(event.currentTarget.value) })}
+                />
+                <div class="range-labels"><small>{t("setup.harder")}</small><small>{t("setup.easier")}</small></div>
+              </label>
+
+              <label class="field">
+                <span>{t("setup.sensitivity")} <strong>{props.settings.voiceThresholdDb} dB</strong></span>
+                <input
+                  type="range"
+                  min="-55"
+                  max="-28"
+                  step="1"
+                  value={props.settings.voiceThresholdDb}
+                  onInput={(event) => patchSettings({ voiceThresholdDb: Number(event.currentTarget.value) })}
+                />
+                <small>{t("setup.sensitivityHint")}</small>
+              </label>
+            </section>
           </div>
 
           <Show when={props.error}><p class="error-message" role="alert">{props.error}</p></Show>
