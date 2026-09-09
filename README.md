@@ -85,15 +85,15 @@ npm run preview      # serve the production build locally
 
 The end-to-end suite uses a fake Chromium microphone to exercise `getUserMedia`, the AudioWorklet recorder, waveform generation, repeat controls, the web app manifest, and offline reloads.
 
-## Deploy to Cloudflare Pages
+## Deploy to Cloudflare
 
-Connect this repository through Cloudflare Pages Git integration and use:
+Connect this repository from **Workers & Pages** using the Git integration and use:
 
 - Production branch: `main`
 - Build command: `npm run build`
-- Build output directory: `dist`
+- Deploy command: `npx wrangler deploy`
 - Root directory: leave empty
 
-The Node.js version and Pages output directory are already declared in `.node-version` and `wrangler.jsonc`. No environment variables or backend services are required. Add `apoj.saa.sh` under **Custom domains** after the first successful deployment.
+The Node.js version and static asset directory are already declared in `.node-version` and `wrangler.jsonc`. No environment variables or backend services are required. Cloudflare deploys the generated `dist` directory as static assets. Add `apoj.saa.sh` under **Custom domains** after the first successful deployment.
 
 See [docs/PLAN.md](docs/PLAN.md) for implementation details and tuning notes.

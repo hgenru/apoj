@@ -1,5 +1,9 @@
 {
-  "name": "apoj",
-  "compatibility_date": "2026-09-09",
-  "pages_build_output_dir": "./dist"
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	"name": "apoj",
+	"compatibility_date": "2026-09-09",
+	"assets": {
+		"directory": "./dist",
+		"not_found_handling": "single-page-application"
+	}
 }
