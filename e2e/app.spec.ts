@@ -17,6 +17,17 @@ async function recordSource(page: import("@playwright/test").Page, milliseconds 
   await expect(page.getByTestId("edit-screen")).toBeVisible();
 }
 
+async function enterChallenge(page: import("@playwright/test").Page) {
+  await page.getByRole("button", { name: /^Начать/ }).click();
+  await expect(page.getByTestId("reverse-preview-screen")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Слушай песню наоборот" })).toBeVisible();
+  await expect(page.getByRole("progressbar", { name: "Воспроизведение перевёрнутой песни" })).toBeVisible();
+  const continueButton = page.getByRole("button", { name: /Начать фрагменты/ });
+  await expect(continueButton).toBeEnabled({ timeout: 10_000 });
+  await expect(page.getByRole("heading", { name: "Теперь — по кусочкам" })).toBeVisible();
+  await continueButton.click();
+}
+
 test("opens the bilingual home with prominent play modes", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByTestId("home-screen")).toBeVisible();
@@ -136,7 +147,7 @@ test("separates repeats and offers another listen", async ({ page }) => {
   await openSourceScreen(page);
   await recordSource(page);
   await page.getByRole("button", { name: /Разрезы хорошие/ }).click();
-  await page.getByRole("button", { name: /Начать/ }).click();
+  await enterChallenge(page);
 
   await expect(page.getByRole("heading", { name: /Приготовься слушать/ })).toBeVisible();
   await expect(page.getByRole("heading", { name: /Слушай · 1\/2/ })).toBeVisible();
@@ -168,7 +179,7 @@ test("manual mode waits for explicit recording and next-fragment controls", asyn
   await recordSource(page, 2_600);
   await expect(page.getByText(/2 кусочк/)).toBeVisible();
   await page.getByRole("button", { name: /Разрезы хорошие/ }).click();
-  await page.getByRole("button", { name: /^Начать/ }).click();
+  await enterChallenge(page);
 
   await expect(page.getByRole("heading", { name: /Готов петь/ })).toBeVisible({ timeout: 12_000 });
   await page.keyboard.press("ArrowDown");
@@ -199,6 +210,9 @@ test("space controls primary actions and the last fragment has no next countdown
   await page.keyboard.press("Space");
   await expect(page.getByTestId("handoff-screen")).toBeVisible();
   await page.keyboard.press("Space");
+  await expect(page.getByTestId("reverse-preview-screen")).toBeVisible();
+  await expect(page.getByRole("button", { name: /Начать фрагменты/ })).toBeEnabled({ timeout: 10_000 });
+  await page.keyboard.press("Space");
   await expect(page.getByRole("button", { name: /Начать запись/ })).toBeVisible({ timeout: 12_000 });
   await page.keyboard.press("Space");
   await expect(page.getByRole("heading", { name: /идёт запись/ })).toBeVisible();
@@ -228,7 +242,7 @@ test("pause freezes the challenge and back returns to the previous safe step", a
 
   await recordSource(page);
   await page.getByRole("button", { name: /Разрезы хорошие/ }).click();
-  await page.getByRole("button", { name: /^Начать/ }).click();
+  await enterChallenge(page);
   await expect(page.getByRole("heading", { name: /Готов петь/ })).toBeVisible({ timeout: 12_000 });
   await page.getByRole("button", { name: /Начать запись/ }).click();
   await expect(page.getByRole("heading", { name: /идёт запись/ })).toBeVisible();
@@ -240,6 +254,8 @@ test("pause freezes the challenge and back returns to the previous safe step", a
 
   await page.keyboard.press("Space");
   await expect(page.getByRole("heading", { name: /Приготовься слушать/ })).toBeVisible();
+  await page.getByRole("button", { name: /назад/i }).click();
+  await expect(page.getByTestId("reverse-preview-screen")).toBeVisible();
   await page.getByRole("button", { name: /назад/i }).click();
   await expect(page.getByTestId("handoff-screen")).toBeVisible();
 });

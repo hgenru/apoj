@@ -11,13 +11,14 @@ import {
   trimSilence,
 } from "./audio/dsp";
 import { LiveWaveform } from "./components/LiveWaveform";
+import { PlaybackWaveform } from "./components/PlaybackWaveform";
 import { SetupDialog } from "./components/SetupDialog";
 import { WaveformEditor } from "./components/WaveformEditor";
 import { locale, setLocale, t } from "./i18n";
 import { focusTvDefault, installTvNavigation } from "./lib/tvNavigation";
 import type { AudioClip, AudioDeviceChoice, GameSettings } from "./types/audio";
 
-type Stage = "home" | "source" | "edit" | "handoff" | "challenge" | "reveal";
+type Stage = "home" | "source" | "edit" | "handoff" | "preview" | "challenge" | "reveal";
 type ChallengeStatus = "starting" | "playing" | "between" | "ready" | "waiting" | "recording" | "saved" | "missed";
 
 interface CapturedAttempt {
@@ -104,6 +105,8 @@ export default function App() {
   const [pausedChallengeIndex, setPausedChallengeIndex] = createSignal(0);
   const [manualRecordSeconds, setManualRecordSeconds] = createSignal(0);
   const [manualRecordLimit, setManualRecordLimit] = createSignal(0);
+  const [previewPlaying, setPreviewPlaying] = createSignal(false);
+  const [previewElapsed, setPreviewElapsed] = createSignal(0);
   const [revealAutoplayPending, setRevealAutoplayPending] = createSignal(false);
   const [installPrompt, setInstallPrompt] = createSignal<BeforeInstallPromptEvent>();
   const [installed, setInstalled] = createSignal(
@@ -113,7 +116,9 @@ export default function App() {
   let sourceTimer: number | undefined;
   let manualRecordingTimer: number | undefined;
   let manualRecordingTimeout: number | undefined;
+  let previewTimer: number | undefined;
   let revealAutoplayTimer: number | undefined;
+  let previewRun = 0;
   let challengeRun = 0;
   let challengeTask: Promise<void> | undefined;
   let stopCurrentAttempt: (() => void) | undefined;
@@ -127,6 +132,14 @@ export default function App() {
   const challengeClips = createMemo(() => {
     const clip = sourceClip();
     return clip ? buildChallenge(clip, boundaries()) : [];
+  });
+  const reversePreviewClip = createMemo(() => {
+    const clip = sourceClip();
+    return clip ? reverseClip(clip) : undefined;
+  });
+  const previewDuration = createMemo(() => {
+    const clip = reversePreviewClip();
+    return clip ? clip.samples.length / clip.sampleRate : 0;
   });
   const hasNextChallengeClip = createMemo(() => challengeIndex() + 1 < challengeClips().length);
   const pausedChallengeHint = createMemo(() => {
@@ -166,14 +179,15 @@ export default function App() {
   });
 
   createEffect(() => {
-    stage();
+    const currentStage = stage();
     setupOpen();
     const busy = setupBusy();
     micReady();
     challengeStatus();
     challengePaused();
+    previewPlaying();
     sourceRecording();
-    if (busy) return;
+    if (busy || (currentStage === "preview" && previewPlaying())) return;
     const frame = window.requestAnimationFrame(() => focusTvDefault());
     onCleanup(() => window.cancelAnimationFrame(frame));
   });
@@ -198,6 +212,7 @@ export default function App() {
     window.clearInterval(sourceTimer);
     window.clearInterval(manualRecordingTimer);
     window.clearTimeout(manualRecordingTimeout);
+    window.clearInterval(previewTimer);
     void engine.dispose();
   });
 
@@ -267,6 +282,11 @@ export default function App() {
     manualRecordingTimeout = undefined;
     setManualRecordSeconds(0);
     setManualRecordLimit(0);
+    previewRun += 1;
+    window.clearInterval(previewTimer);
+    previewTimer = undefined;
+    setPreviewPlaying(false);
+    setPreviewElapsed(0);
   };
 
   const beginRound = () => {
@@ -326,6 +346,49 @@ export default function App() {
     if (!clip) return;
     const piece = fadeEdges(sliceClip(clip, start, end));
     void engine.play(reversed ? reverseClip(piece) : piece);
+  };
+
+  const stopReversePreview = () => {
+    previewRun += 1;
+    window.clearInterval(previewTimer);
+    previewTimer = undefined;
+    engine.stopPlayback();
+    setPreviewPlaying(false);
+  };
+
+  const playReversePreview = async () => {
+    const clip = reversePreviewClip();
+    if (!clip) return;
+    const token = ++previewRun;
+    window.clearInterval(previewTimer);
+    engine.stopPlayback();
+    setStage("preview");
+    setPreviewPlaying(true);
+    setPreviewElapsed(0);
+    const duration = clip.samples.length / clip.sampleRate;
+    const startedAt = performance.now();
+    previewTimer = window.setInterval(() => {
+      if (token !== previewRun) return;
+      setPreviewElapsed(Math.min(duration, (performance.now() - startedAt) / 1_000));
+    }, 100);
+
+    try {
+      await engine.play(clip);
+      if (token !== previewRun) return;
+      setPreviewElapsed(duration);
+    } finally {
+      if (token === previewRun) {
+        window.clearInterval(previewTimer);
+        previewTimer = undefined;
+        setPreviewPlaying(false);
+      }
+    }
+  };
+
+  const continueFromPreview = () => {
+    if (previewPlaying()) return;
+    stopReversePreview();
+    launchChallenge();
   };
 
   const waitWithCountdown = async (milliseconds: number, token: number) => {
@@ -707,6 +770,11 @@ export default function App() {
         engine.stopPlayback();
         setStage("edit");
         return;
+      case "preview":
+        stopReversePreview();
+        setPreviewElapsed(0);
+        setStage("handoff");
+        return;
       case "challenge": {
         const cursor = challengePaused() ? pausedChallengeIndex() : challengeIndex();
         const interruptedTask = challengeTask;
@@ -715,7 +783,9 @@ export default function App() {
         if (interruptedTask) await interruptedTask;
         if (cursor <= 0) {
           setAttempts([]);
-          setStage("handoff");
+          setPreviewPlaying(false);
+          setPreviewElapsed(previewDuration());
+          setStage("preview");
           return;
         }
         const previousIndex = cursor - 1;
@@ -747,7 +817,10 @@ export default function App() {
         if (sourceClip()) setStage("handoff");
         break;
       case "handoff":
-        launchChallenge();
+        void playReversePreview();
+        break;
+      case "preview":
+        continueFromPreview();
         break;
       case "challenge":
         if (challengePaused()) void resumeChallenge();
@@ -765,7 +838,12 @@ export default function App() {
   };
 
   const runRepeatShortcut = () => {
-    if (setupOpen() || stage() !== "challenge" || challengePaused()) return;
+    if (setupOpen()) return;
+    if (stage() === "preview") {
+      if (!previewPlaying()) void playReversePreview();
+      return;
+    }
+    if (stage() !== "challenge" || challengePaused()) return;
     if (challengeStatus() === "ready") requestReplay?.();
     else if (challengeStatus() === "recording") {
       setRedoRequested(true);
@@ -1005,10 +1083,66 @@ export default function App() {
               <div class="handoff__icon" aria-hidden="true">🎤<span>2</span></div>
               <h1>{t("handoff.inviteBack")}</h1>
               <p class="stage__hint">{t("handoff.description")}</p>
-              <button class="button button--primary party-button" data-tv-default aria-keyshortcuts="Space" onClick={() => launchChallenge()}>
+              <button class="button button--primary party-button" data-tv-default aria-keyshortcuts="Space" onClick={() => void playReversePreview()}>
                 {t("handoff.start")}<kbd>{t("shortcut.primary")}</kbd>
               </button>
             </section>
+          </Match>
+
+          <Match when={stage() === "preview" && reversePreviewClip()}>
+            {(clip) => (
+              <section
+                class="reverse-preview"
+                data-testid="reverse-preview-screen"
+                onKeyDown={(event) => {
+                  if (event.code !== "KeyR" || previewPlaying()) return;
+                  event.preventDefault();
+                  void playReversePreview();
+                }}
+              >
+                <p class="reverse-preview__kicker">{t("preview.eyebrow")}</p>
+                <div class="reverse-preview__visual">
+                  <div classList={{ "reverse-preview__vinyl": true, playing: previewPlaying() }} aria-hidden="true">
+                    <span>Ж</span>
+                  </div>
+                  <div class="reverse-preview__wave-panel">
+                    <PlaybackWaveform
+                      clip={clip()}
+                      progress={previewDuration() ? previewElapsed() / previewDuration() : 0}
+                    />
+                    <div class="reverse-preview__clock">
+                      <strong>{formatClock(previewElapsed())}</strong>
+                      <span>/ {formatClock(previewDuration())}</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="reverse-preview__command" aria-live="polite">
+                  <h1>{previewPlaying() ? t("preview.title") : t("preview.ready")}</h1>
+                  <p>{previewPlaying() ? t("preview.listening") : t("preview.readyHint")}</p>
+                </div>
+                <div class="reverse-preview__actions">
+                  <button
+                    class="button button--ghost party-button"
+                    type="button"
+                    aria-keyshortcuts="R"
+                    disabled={previewPlaying()}
+                    onClick={() => void playReversePreview()}
+                  >
+                    ↶ {t("preview.replay")}<kbd>{t("shortcut.repeat")}</kbd>
+                  </button>
+                  <button
+                    class="button button--primary party-button"
+                    type="button"
+                    data-tv-default
+                    aria-keyshortcuts="Space"
+                    disabled={previewPlaying()}
+                    onClick={continueFromPreview}
+                  >
+                    {t("preview.continue")}<kbd>{t("shortcut.primary")}</kbd>
+                  </button>
+                </div>
+              </section>
+            )}
           </Match>
 
           <Match when={stage() === "challenge"}>
