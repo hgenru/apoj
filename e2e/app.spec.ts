@@ -47,6 +47,7 @@ test("settings are available without entering a round", async ({ page }) => {
   await expect(page.getByText("больше коротких")).toBeVisible();
   await expect(page.getByText("меньше длинных")).toBeVisible();
   await expect(page.getByRole("button", { name: "Подключить микрофон" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Настроить по голосу" })).toBeDisabled();
   await expect(page.getByText("Управление раундом")).toHaveCount(0);
 });
 
@@ -61,11 +62,36 @@ test("supports TV arrows and keeps keyboard focus inside setup", async ({ page }
   const connect = page.getByRole("button", { name: "Подключить микрофон" });
   await expect(connect).toBeFocused();
   await expect(page.locator("body")).toHaveAttribute("data-tv-navigation", "");
+  const dialogBeforeConnect = await page.getByRole("dialog").boundingBox();
+
+  const inputSelect = page.getByLabel("Аудиовход");
+  await inputSelect.focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(inputSelect).not.toBeFocused();
+  await expect(page.getByRole("dialog").locator(":focus")).toHaveCount(1);
+  await connect.focus();
 
   await page.keyboard.press("Enter");
   await expect(page.getByText(/Микрофон готов/)).toBeVisible();
   await expect(page.getByRole("button", { name: /Перейти к записи/ })).toBeFocused();
+  await expect(page.getByRole("button", { name: "Настроить по голосу" })).toBeEnabled();
+  const dialogAfterConnect = await page.getByRole("dialog").boundingBox();
+  expect(dialogBeforeConnect).not.toBeNull();
+  expect(dialogAfterConnect?.height).toBeCloseTo(dialogBeforeConnect!.height, 0);
+  expect(dialogAfterConnect?.y).toBeCloseTo(dialogBeforeConnect!.y, 0);
 
+  await expect(inputSelect.locator("option")).not.toHaveCount(1);
+  const initialInput = await inputSelect.inputValue();
+  await inputSelect.focus();
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("Enter");
+  await expect(inputSelect).not.toHaveValue(initialInput);
+  await expect(inputSelect).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(inputSelect).not.toBeFocused();
+
+  await page.getByRole("button", { name: "Подключить выбранный вход" }).focus();
   await page.keyboard.press("Tab");
   await expect(page.getByRole("button", { name: "Закрыть" }).first()).toBeFocused();
   await expect(page.getByRole("dialog").locator(":focus")).toHaveCount(1);

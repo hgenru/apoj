@@ -159,20 +159,20 @@ export const SetupDialog: Component<SetupDialogProps> = (props) => {
                   }}
                 />
                 <div class="range-labels"><small>{t("setup.quieterVoice")}</small><small>{t("setup.louderVoice")}</small></div>
-                <Show when={props.ready}>
-                  <div class="calibration-row">
-                    <button class="button button--ghost calibration-button" type="button" disabled={calibrationState() === "listening"} onClick={startCalibration}>
-                      {calibrationState() === "listening"
-                        ? t("setup.calibrating", { seconds: calibrationSeconds() })
-                        : t("setup.calibrate")}
-                    </button>
-                    <span class="calibration-result" aria-live="polite">
-                      {calibrationState() === "done"
+                <div class="calibration-row">
+                  <button class="button button--ghost calibration-button" type="button" disabled={!props.ready || calibrationState() === "listening"} onClick={startCalibration}>
+                    {calibrationState() === "listening"
+                      ? t("setup.calibrating", { seconds: calibrationSeconds() })
+                      : t("setup.calibrate")}
+                  </button>
+                  <span class="calibration-result" aria-live="polite">
+                    {!props.ready
+                      ? t("setup.calibrationNeedsMic")
+                      : calibrationState() === "done"
                         ? t("setup.calibrated", { level: props.settings.voiceThresholdDb })
                         : calibrationState() === "missed" ? t("setup.calibrationMissed") : t("setup.sensitivityHint")}
-                    </span>
-                  </div>
-                </Show>
+                  </span>
+                </div>
               </label>
             </section>
           </div>

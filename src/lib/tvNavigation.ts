@@ -100,7 +100,6 @@ export function installTvNavigation() {
     const direction = ({ ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down" } as const)[event.key];
     if (!direction) return;
     const active = document.activeElement as HTMLElement | null;
-    if (active?.matches("select")) return;
     if (active?.matches("input[type='range']") && (direction === "left" || direction === "right")) return;
 
     document.body.setAttribute("data-tv-navigation", "");
