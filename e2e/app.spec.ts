@@ -6,7 +6,7 @@ async function openSourceScreen(page: import("@playwright/test").Page, mode: "А
   await page.getByRole("button", { name: new RegExp(`^${mode}`) }).click();
   await page.getByRole("button", { name: /Начать раунд/ }).click();
   await page.getByRole("button", { name: "Подключить микрофон" }).click();
-  await expect(page.getByText(/Микрофон готов/)).toBeVisible();
+  await expect(page.getByText(/^Активен:/)).toBeVisible();
   await page.getByRole("button", { name: /Перейти к записи/ }).click();
 }
 
@@ -72,7 +72,7 @@ test("supports TV arrows and keeps keyboard focus inside setup", async ({ page }
   await connect.focus();
 
   await page.keyboard.press("Enter");
-  await expect(page.getByText(/Микрофон готов/)).toBeVisible();
+  await expect(page.getByText(/^Активен:/)).toBeVisible();
   await expect(page.getByRole("button", { name: /Перейти к записи/ })).toBeFocused();
   await expect(page.getByRole("button", { name: "Настроить по голосу" })).toBeEnabled();
   const dialogAfterConnect = await page.getByRole("dialog").boundingBox();
@@ -87,11 +87,14 @@ test("supports TV arrows and keeps keyboard focus inside setup", async ({ page }
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("Enter");
   await expect(inputSelect).not.toHaveValue(initialInput);
-  await expect(inputSelect).toBeFocused();
+  await expect(inputSelect).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Подключить выбранный вход" })).toHaveCount(0);
+  await expect(page.getByText(/^Активен:/)).toBeVisible();
+  await inputSelect.focus();
   await page.keyboard.press("ArrowDown");
   await expect(inputSelect).not.toBeFocused();
 
-  await page.getByRole("button", { name: "Подключить выбранный вход" }).focus();
+  await page.getByRole("button", { name: /Перейти к записи/ }).focus();
   await page.keyboard.press("Tab");
   await expect(page.getByRole("button", { name: "Закрыть" }).first()).toBeFocused();
   await expect(page.getByRole("dialog").locator(":focus")).toHaveCount(1);
@@ -160,7 +163,7 @@ test("manual mode waits for explicit recording and next-fragment controls", asyn
   await page.getByLabel(/Средняя длина кусочка/).fill("1.4");
   await page.getByRole("group", { name: "Повторов фрагмента" }).getByRole("button", { name: "1 раз" }).click();
   await page.getByRole("button", { name: "Подключить микрофон" }).click();
-  await expect(page.getByText(/Микрофон готов/)).toBeVisible();
+  await expect(page.getByText(/^Активен:/)).toBeVisible();
   await page.getByRole("button", { name: /Перейти к записи/ }).click();
   await recordSource(page, 2_600);
   await expect(page.getByText(/2 кусочк/)).toBeVisible();

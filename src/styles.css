@@ -2059,8 +2059,16 @@ input[type="range"] {
   display: flex;
   align-items: center;
   gap: 9px;
+  min-width: 0;
   color: #d4d2e2;
   font-size: 1rem;
+}
+
+.sound-check__status > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .status-dot {

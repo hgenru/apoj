@@ -2,6 +2,11 @@ import type { AudioClip, AudioDeviceChoice, ChannelMode } from "../types/audio";
 
 type StopResolver = (clip: AudioClip) => void;
 
+export interface AudioInputConnection {
+  devices: AudioDeviceChoice[];
+  activeDevice?: AudioDeviceChoice;
+}
+
 export class AudioEngine {
   private context?: AudioContext;
   private stream?: MediaStream;
@@ -23,7 +28,7 @@ export class AudioEngine {
     return this.context?.sampleRate ?? 48_000;
   }
 
-  async initialize(deviceId: string | undefined, channelMode: ChannelMode): Promise<AudioDeviceChoice[]> {
+  async initialize(deviceId: string | undefined, channelMode: ChannelMode): Promise<AudioInputConnection> {
     if (!navigator.mediaDevices?.getUserMedia) {
       throw new Error("audio-unsupported");
     }
@@ -68,7 +73,12 @@ export class AudioEngine {
     this.source.connect(this.analyser);
     this.source.connect(this.recorder);
     this.recorder.connect(this.silentGain).connect(this.context.destination);
-    return this.listInputs();
+    const devices = await this.listInputs();
+    const track = this.stream.getAudioTracks()[0];
+    const activeDeviceId = track?.getSettings().deviceId ?? deviceId ?? "";
+    const activeDevice = devices.find((device) => device.deviceId === activeDeviceId)
+      ?? (track?.label ? { deviceId: activeDeviceId, label: track.label } : undefined);
+    return { devices, activeDevice };
   }
 
   async listInputs(): Promise<AudioDeviceChoice[]> {

@@ -80,11 +80,11 @@ export default function App() {
   const [stage, setStage] = createSignal<Stage>("home");
   const [setupOpen, setSetupOpen] = createSignal(false);
   const [setupPurpose, setSetupPurpose] = createSignal<"round" | "settings">("settings");
-  const [setupDeviceDirty, setSetupDeviceDirty] = createSignal(false);
   const [setupBusy, setSetupBusy] = createSignal(false);
   const [micReady, setMicReady] = createSignal(false);
   const [devices, setDevices] = createSignal<AudioDeviceChoice[]>([]);
   const [selectedDevice, setSelectedDevice] = createSignal("");
+  const [activeDeviceLabel, setActiveDeviceLabel] = createSignal("");
   const [settings, setSettings] = createSignal<GameSettings>(readSettings());
   const [error, setError] = createSignal("");
   const [level, setLevel] = createSignal(0);
@@ -170,7 +170,6 @@ export default function App() {
     setupOpen();
     const busy = setupBusy();
     micReady();
-    setupDeviceDirty();
     challengeStatus();
     challengePaused();
     sourceRecording();
@@ -229,16 +228,17 @@ export default function App() {
     setInstallPrompt(undefined);
   };
 
-  const connectMicrophone = async () => {
+  const connectMicrophone = async (deviceId = selectedDevice()) => {
     setSetupBusy(true);
     setError("");
     try {
-      const inputs = await engine.initialize(selectedDevice() || undefined, settings().channelMode);
-      setDevices(inputs);
+      const connection = await engine.initialize(deviceId || undefined, settings().channelMode);
+      setDevices(connection.devices);
+      setActiveDeviceLabel(connection.activeDevice?.label ?? "");
       setMicReady(true);
-      setSetupDeviceDirty(false);
     } catch (cause) {
       setMicReady(false);
+      setActiveDeviceLabel("");
       setError(cause instanceof Error && cause.message === "audio-unsupported" ? t("error.unsupported") : t("error.permission"));
     } finally {
       setSetupBusy(false);
@@ -1219,10 +1219,10 @@ export default function App() {
         purpose={setupPurpose()}
         busy={setupBusy()}
         ready={micReady()}
-        deviceDirty={setupDeviceDirty()}
         error={error()}
         devices={devices()}
         selectedDevice={selectedDevice()}
+        activeDeviceLabel={activeDeviceLabel()}
         settings={settings()}
         level={level()}
         onClose={() => setSetupOpen(false)}
@@ -1230,7 +1230,7 @@ export default function App() {
         onConnect={() => void connectMicrophone()}
         onDeviceChange={(deviceId) => {
           setSelectedDevice(deviceId);
-          setSetupDeviceDirty(true);
+          void connectMicrophone(deviceId);
         }}
         onSettingsChange={setSettings}
       />

@@ -9,10 +9,10 @@ interface SetupDialogProps {
   purpose: "round" | "settings";
   busy: boolean;
   ready: boolean;
-  deviceDirty: boolean;
   error: string;
   devices: AudioDeviceChoice[];
   selectedDevice: string;
+  activeDeviceLabel: string;
   settings: GameSettings;
   level: number;
   onClose: () => void;
@@ -93,7 +93,12 @@ export const SetupDialog: Component<SetupDialogProps> = (props) => {
 
               <label class="field" for="setup-input">
                 <span>{t("setup.input")}</span>
-                <select id="setup-input" value={props.selectedDevice} onChange={(event) => props.onDeviceChange(event.currentTarget.value)}>
+                <select
+                  id="setup-input"
+                  value={props.selectedDevice}
+                  disabled={props.busy}
+                  onChange={(event) => props.onDeviceChange(event.currentTarget.value)}
+                >
                   <option value="">{t("setup.defaultInput")}</option>
                   <For each={props.devices}>{(device) => <option value={device.deviceId}>{device.label}</option>}</For>
                 </select>
@@ -110,8 +115,14 @@ export const SetupDialog: Component<SetupDialogProps> = (props) => {
 
               <div class="sound-check">
                 <div class="sound-check__status">
-                  <span classList={{ "status-dot": true, "status-dot--ready": props.ready }} />
-                  <span>{props.ready ? t("setup.ready") : t("setup.notReady")}</span>
+                  <span classList={{ "status-dot": true, "status-dot--ready": props.ready && !props.busy }} />
+                  <span title={props.activeDeviceLabel}>
+                    {props.busy
+                      ? t("setup.connecting")
+                      : props.ready
+                        ? t("setup.activeInput", { device: props.activeDeviceLabel || t("setup.defaultInput") })
+                        : t("setup.notReady")}
+                  </span>
                 </div>
                 <LevelMeter level={props.level} />
               </div>
@@ -181,10 +192,10 @@ export const SetupDialog: Component<SetupDialogProps> = (props) => {
           <div class="setup-actions">
             <button class="button button--ghost" type="button" onClick={close}>{t("common.close")}</button>
             <Show
-              when={props.ready && !props.deviceDirty}
+              when={props.ready && !props.busy}
               fallback={
                 <button class="button button--primary" type="button" data-tv-default disabled={props.busy} onClick={props.onConnect}>
-                  {props.busy ? t("setup.connecting") : props.deviceDirty ? t("setup.applyInput") : t("setup.connectMic")}
+                  {props.busy ? t("setup.connecting") : t("setup.connectMic")}
                 </button>
               }
             >
