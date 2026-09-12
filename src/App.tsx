@@ -76,6 +76,13 @@ function formatClock(seconds: number) {
   return `${minutes}:${Math.floor(seconds % 60).toString().padStart(2, "0")}`;
 }
 
+function formatPreciseClock(seconds: number) {
+  const totalTenths = Math.floor(Math.max(0, seconds) * 10);
+  const minutes = Math.floor(totalTenths / 600);
+  const remainder = totalTenths % 600;
+  return `${minutes}:${Math.floor(remainder / 10).toString().padStart(2, "0")}.${remainder % 10}`;
+}
+
 export default function App() {
   const engine = new AudioEngine();
   const [stage, setStage] = createSignal<Stage>("home");
@@ -141,6 +148,10 @@ export default function App() {
     const clip = reversePreviewClip();
     return clip ? clip.samples.length / clip.sampleRate : 0;
   });
+  const currentChallengeDuration = createMemo(() => {
+    const clip = challengeClips()[challengeIndex()];
+    return clip ? clip.samples.length / clip.sampleRate : 0;
+  });
   const hasNextChallengeClip = createMemo(() => challengeIndex() + 1 < challengeClips().length);
   const pausedChallengeHint = createMemo(() => {
     if (pausedChallengeIndex() <= challengeIndex()) return t("challenge.pausedHint");
@@ -200,7 +211,7 @@ export default function App() {
     const timer = window.setInterval(() => {
       const currentLevel = engine.getLevel();
       setLevel(currentLevel);
-      if (sourceRecording() || challengeStatus() === "waiting" || challengeStatus() === "recording") {
+      if (sourceRecording() || challengeStatus() === "recording") {
         setLiveWaveform((current) => [...current.slice(-1_799), currentLevel]);
       }
     }, 45);
@@ -417,6 +428,7 @@ export default function App() {
     let silentMs = 0;
     let voiceStarted = false;
     let voiceStartedAt = 0;
+    let onsetLevels: number[] = [];
 
     await new Promise<void>((resolve) => {
       let finished = false;
@@ -438,10 +450,12 @@ export default function App() {
         if (token !== challengeRun) return finish();
         const currentLevel = engine.getLevel();
         if (!voiceStarted) {
+          onsetLevels = [...onsetLevels.slice(-4), currentLevel];
           voicedFrames = currentLevel >= gate.startThreshold ? voicedFrames + 1 : 0;
           if (voicedFrames >= 5) {
             voiceStarted = true;
             voiceStartedAt = performance.now();
+            setLiveWaveform(onsetLevels);
             setChallengeStatus("recording");
           }
         } else {
@@ -1192,11 +1206,12 @@ export default function App() {
                           values={liveWaveform()}
                           active={challengeStatus() === "recording"}
                           tone={challengeStatus() === "recording" ? "coral" : "mint"}
+                          guide={challengeClips()[challengeIndex()]}
                         />
                         <Show when={challengeStatus() === "recording" && settings().controlMode === "manual"}>
-                          <div class="challenge-live-wave__timer" aria-label={t("challenge.manualLimit", { seconds: manualRecordLimit() })}>
-                            <strong>{formatClock(manualRecordSeconds())}</strong>
-                            <span>/ {formatClock(manualRecordLimit())}</span>
+                          <div class="challenge-live-wave__timer" aria-label={t("challenge.answerTiming")}>
+                            <strong>{formatPreciseClock(manualRecordSeconds())}</strong>
+                            <span>/ {formatPreciseClock(currentChallengeDuration())}</span>
                           </div>
                         </Show>
                       </div>

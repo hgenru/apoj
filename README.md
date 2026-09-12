@@ -26,7 +26,7 @@ No server, account, or internet connection is required after the app has been lo
 7. After a short preparation countdown and a beep, player two imitates the sound. In Auto mode, recording starts on their voice and stops on silence.
 8. APOZH joins the imitations with a tiny breathing gap, reverses the complete recording, and plays the result. In Auto mode, the result starts automatically after a short reveal pause.
 
-During the challenge, **Listen again** replays the current chunk. **Discard and try again** throws away the current take, while **Record again** replaces a take that has just finished. **Pause** safely stops playback or recording; continuing restarts that fragment from the beginning.
+During recording, the original reversed chunk remains visible as a faint waveform guide. The live answer fills the same fixed timeline from left to right, making the intended duration easier to follow without a scrolling graph. **Listen again** replays the current chunk. **Discard and try again** throws away the current take, while **Record again** replaces a take that has just finished. **Pause** safely stops playback or recording; continuing restarts that fragment from the beginning.
 
 Choose **Auto** or **Manual** directly on the home screen. Auto runs a hands-free round driven by voice detection. Manual is safer in a noisy room: playback repeats still run automatically, while large on-screen controls start and stop recording and advance to the next fragment. Manual takes show an elapsed timer and stop at a generous safety limit if nobody presses the button.
 

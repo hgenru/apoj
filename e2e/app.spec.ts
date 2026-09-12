@@ -163,6 +163,8 @@ test("separates repeats and offers another listen", async ({ page }) => {
   expect(commandTopBeforeSinging).toBeCloseTo(commandTopDuringPause!, 0);
   await listenAgain.click();
   await expect(page.getByRole("heading", { name: /Слушай ещё раз/ })).toBeVisible();
+  await expect(page.getByRole("img", { name: "Живая запись поверх формы исходного фрагмента" })).toBeVisible({ timeout: 12_000 });
+  await expect(page.locator(".live-waveform__guide")).not.toHaveCount(0);
 });
 
 test("manual mode waits for explicit recording and next-fragment controls", async ({ page }) => {
@@ -186,8 +188,11 @@ test("manual mode waits for explicit recording and next-fragment controls", asyn
   await expect(page.getByRole("button", { name: /Начать запись/ })).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("heading", { name: /идёт запись/ })).toBeVisible();
+  await expect(page.locator(".live-waveform__guide")).not.toHaveCount(0);
+  await expect(page.getByRole("img", { name: "Живая запись поверх формы исходного фрагмента" })).toBeVisible();
   await expect(page.getByRole("button", { name: /Остановить запись/ })).toBeFocused();
-  await expect(page.locator(".challenge-live-wave__timer")).toContainText("/ 0:07");
+  await expect(page.locator(".challenge-live-wave__timer")).toContainText(/0:\d{2}\.\d\/ 0:\d{2}\.\d/);
+  await expect(page.getByText("Автостоп через 7 с")).toBeVisible();
   await expect(page.getByRole("heading", { name: /Записано/ })).toBeVisible({ timeout: 9_000 });
   await expect(page.getByRole("button", { name: /Следующий кусочек/ })).toBeFocused();
   await page.waitForTimeout(3_500);

@@ -1055,6 +1055,17 @@ kbd {
   opacity: 0.8;
 }
 
+.live-waveform__guide {
+  fill: #c9c6d9;
+  opacity: 0.18;
+}
+
+.live-waveform__playhead {
+  stroke: var(--yellow);
+  stroke-width: 3;
+  vector-effect: non-scaling-stroke;
+}
+
 .live-waveform--mint .live-waveform__bar {
   fill: var(--mint);
 }
@@ -1433,7 +1444,7 @@ kbd {
 
 .challenge-live-wave {
   position: relative;
-  width: min(1100px, 86vw);
+  width: min(1420px, 92vw);
   height: clamp(250px, 31vh, 340px);
 }
 
